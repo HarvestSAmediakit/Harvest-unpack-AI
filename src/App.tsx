@@ -28,6 +28,7 @@ import {
   BookOpen,
   Eye,
   Trash2,
+  Save,
   ExternalLink,
   Search,
   Image as ImageIcon,
@@ -37,7 +38,10 @@ import {
   FlaskConical,
   Cpu,
   Heart,
-  Thermometer
+  Thermometer,
+  Twitter,
+  Facebook,
+  Linkedin
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { extractTextFromFile, InputType } from './services/textExtractionService';
@@ -70,6 +74,7 @@ interface LibraryEntry {
   chapters: PodcastChapter[];
   showNotes: string;
   language: PodcastLanguage;
+  duration: number;
 }
 
 declare global {
@@ -94,7 +99,18 @@ export default function App() {
   const [chapters, setChapters] = useState<PodcastChapter[]>([]);
   const [showNotes, setShowNotes] = useState<string>('');
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
+  const [currentPodcast, setCurrentPodcast] = useState<{
+    title: string;
+    summary: string;
+    chapters: PodcastChapter[];
+    showNotes: string;
+    script: PodcastSegment[];
+    language: PodcastLanguage;
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [languageFilter, setLanguageFilter] = useState<string>('all');
+  const [dateRangeFilter, setDateRangeFilter] = useState<string>('all');
+  const [keywordFilter, setKeywordFilter] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -195,9 +211,17 @@ export default function App() {
 
       if (file) {
         setStatus(`Extracting text from ${file.name}...`);
-        const result = await extractTextFromFile(file);
-        text = result.text;
-        title = result.title;
+        try {
+          const result = await extractTextFromFile(file);
+          text = result.text;
+          title = result.title;
+        } catch (err: any) {
+          console.error("Text Extraction Error:", err);
+          if (err.message?.includes("Failed to fetch") || err.message?.includes("network")) {
+            throw new Error("Network error while uploading file. Please check your connection and try again.");
+          }
+          throw new Error(`Failed to process file: ${err.message || 'Unknown error'}`);
+        }
       } else {
         setStatus('Processing your text...');
         text = rawText;
@@ -231,6 +255,14 @@ export default function App() {
         
         setChapters(generatedChapters);
         setShowNotes(generatedShowNotes);
+        setCurrentPodcast({
+          title: title,
+          summary: summary,
+          chapters: generatedChapters,
+          showNotes: generatedShowNotes,
+          script: generatedScript,
+          language: selectedLanguage
+        });
         
         const entryId = Date.now().toString();
 
@@ -238,6 +270,10 @@ export default function App() {
         const audioBlob = await fetch(generatedAudio).then(r => r.blob());
         const pdfBlob = file ? file : new Blob([text], { type: 'text/plain' });
         
+        const audioContext = new AudioContext();
+        const audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
+        const duration = audioBuffer.duration;
+
         await saveMedia({
           id: entryId,
           pdfBlob: pdfBlob,
@@ -252,7 +288,8 @@ export default function App() {
           date: new Date().toLocaleDateString(),
           chapters: generatedChapters,
           showNotes: generatedShowNotes,
-          language: selectedLanguage
+          language: selectedLanguage,
+          duration: duration
         };
         
         setLibrary(prev => [newEntry, ...prev]);
@@ -297,6 +334,14 @@ export default function App() {
         setShowNotes(entry.showNotes);
         setSelectedLanguage(entry.language || 'English');
         setFile(new File([media.pdfBlob], entry.title + ".pdf", { type: 'application/pdf' }));
+        setCurrentPodcast({
+          title: entry.title,
+          summary: entry.description,
+          chapters: entry.chapters,
+          showNotes: entry.showNotes,
+          script: media.script,
+          language: entry.language
+        });
         
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
@@ -311,6 +356,38 @@ export default function App() {
     }
   };
 
+  const saveToLibrary = async () => {
+    if (!currentPodcast || !audioUrl) return;
+    const entryId = Date.now().toString();
+    const audioBlob = await fetch(audioUrl).then(r => r.blob());
+    const pdfBlob = file ? file : new Blob([rawText], { type: 'text/plain' });
+    
+    const audioContext = new AudioContext();
+    const audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
+    const duration = audioBuffer.duration;
+
+    await saveMedia({
+      id: entryId,
+      pdfBlob: pdfBlob,
+      audioBlob: audioBlob,
+      script: currentPodcast.script
+    });
+
+    const newEntry: LibraryEntry = {
+      id: entryId,
+      title: currentPodcast.title,
+      description: currentPodcast.summary,
+      date: new Date().toLocaleDateString(),
+      chapters: currentPodcast.chapters,
+      showNotes: currentPodcast.showNotes,
+      language: currentPodcast.language,
+      duration: duration
+    };
+    
+    setLibrary(prev => [newEntry, ...prev]);
+    setStatus('Podcast saved to library!');
+  };
+
   const deleteFromLibrary = async (id: string) => {
     if (confirm('Are you sure you want to delete this podcast from your library?')) {
       await deleteMedia(id);
@@ -318,10 +395,24 @@ export default function App() {
     }
   };
 
-  const filteredLibrary = library.filter(entry => 
-    entry.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    entry.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredLibrary = library.filter(entry => {
+    const matchesSearch = entry.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          entry.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesLanguage = languageFilter === 'all' || entry.language === languageFilter;
+    const matchesKeyword = keywordFilter === '' || entry.description.toLowerCase().includes(keywordFilter.toLowerCase());
+    
+    let matchesDate = true;
+    if (dateRangeFilter !== 'all') {
+      const entryDate = new Date(entry.date);
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - entryDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (dateRangeFilter === 'last7') matchesDate = diffDays <= 7;
+      else if (dateRangeFilter === 'last30') matchesDate = diffDays <= 30;
+    }
+
+    return matchesSearch && matchesLanguage && matchesKeyword && matchesDate;
+  });
 
   const togglePlayback = () => {
     if (audioRef.current) {
@@ -395,8 +486,12 @@ export default function App() {
     if (navigator.share) {
       try {
         await navigator.share(shareData);
-      } catch (err) {
-        console.error('Error sharing:', err);
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error('Error sharing:', err);
+        } else {
+          console.warn('Share canceled by user');
+        }
       }
     } else {
       // Fallback: Copy to clipboard
@@ -632,7 +727,7 @@ export default function App() {
                     </div>
                     {[
                       { id: 1, label: 'Extracting text from content' },
-                      { id: 2, label: 'Generating 2-character deep dive script' },
+                      { id: 2, label: 'Generating 2-minute deep dive script' },
                       { id: 3, label: 'Synthesizing South African voices (Batch processing)' },
                       { id: 4, label: 'Finalizing long-form podcast' },
                     ].map((step) => (
@@ -755,6 +850,27 @@ export default function App() {
                             <Download size={18} />
                             <span>Download</span>
                           </a>
+
+                          <button 
+                            onClick={saveToLibrary}
+                            className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-sans font-bold transition-all border border-white/20 hover:border-white/40"
+                            title="Save to Library"
+                          >
+                            <Save size={18} />
+                            <span>Save</span>
+                          </button>
+
+                          <div className="flex items-center gap-2">
+                             <a href={`https://twitter.com/intent/tweet?text=Check out this DeepDive: ${currentPodcast?.title || 'Podcast'}&url=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Share on Twitter">
+                               <Twitter size={18} />
+                             </a>
+                             <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Share on Facebook">
+                               <Facebook size={18} />
+                             </a>
+                             <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Share on LinkedIn">
+                               <Linkedin size={18} />
+                             </a>
+                          </div>
 
                           <button 
                             onClick={sharePodcast}
@@ -891,6 +1007,10 @@ export default function App() {
                   avatarUrl="https://picsum.photos/seed/thabo/100/100"
                   samplePhrase="Lekker man! I've been looking at the latest data and it's looking very promising for our farmers."
                   selectedLanguage={selectedLanguage}
+                  pronunciationGuide={[
+                    { term: "Agronomy", phonetic: "uh-GRON-uh-mee" },
+                    { term: "Hydroponics", phonetic: "hahy-druh-PON-iks" }
+                  ]}
                 />
                 <CharacterCard 
                   name="Lindiwe" 
@@ -900,6 +1020,10 @@ export default function App() {
                   avatarUrl="https://picsum.photos/seed/lindiwe/100/100"
                   samplePhrase="Howzit! Let's get our hands dirty and see what's really happening on the ground."
                   selectedLanguage={selectedLanguage}
+                  pronunciationGuide={[
+                    { term: "Bovine", phonetic: "BOH-vahyn" },
+                    { term: "Veterinary", phonetic: "VET-er-uh-ner-ee" }
+                  ]}
                 />
                 <CharacterCard 
                   name="Dr. Thandi" 
@@ -909,6 +1033,10 @@ export default function App() {
                   avatarUrl="https://picsum.photos/seed/thandi/100/100"
                   samplePhrase="Your soil pH is 6.2? Congrats, you've invented acidic soup."
                   selectedLanguage={selectedLanguage}
+                  pronunciationGuide={[
+                    { term: "Pedology", phonetic: "pi-DOL-uh-jee" },
+                    { term: "Nitrogen", phonetic: "NAY-truh-juhn" }
+                  ]}
                 />
                 <CharacterCard 
                   name="JP BoerBot" 
@@ -918,6 +1046,10 @@ export default function App() {
                   avatarUrl="https://picsum.photos/seed/jp/100/100"
                   samplePhrase="Luister hier boet, this drone spots weeds faster than my ex spotting a bargain at Pick n Pay! Dis 'n feit!"
                   selectedLanguage={selectedLanguage}
+                  pronunciationGuide={[
+                    { term: "Boer", phonetic: "boor" },
+                    { term: "Veld", phonetic: "felt" }
+                  ]}
                 />
                 <CharacterCard 
                   name="Gogo Nomsa" 
@@ -927,6 +1059,10 @@ export default function App() {
                   avatarUrl="https://picsum.photos/seed/nomsa/100/100"
                   samplePhrase="Mntanami, we must look after the soil as our ancestors did. It is our legacy."
                   selectedLanguage={selectedLanguage}
+                  pronunciationGuide={[
+                    { term: "Ubuntu", phonetic: "oo-BOON-too" },
+                    { term: "Imbizo", phonetic: "im-BEE-zoh" }
+                  ]}
                 />
                 <CharacterCard 
                   name="Prof. Dewald" 
@@ -936,6 +1072,10 @@ export default function App() {
                   avatarUrl="https://picsum.photos/seed/dewald/100/100"
                   samplePhrase="The data is clear: we are approaching a tipping point. We must adapt our irrigation strategies now."
                   selectedLanguage={selectedLanguage}
+                  pronunciationGuide={[
+                    { term: "Meteorology", phonetic: "mee-tee-uh-ROL-uh-jee" },
+                    { term: "Sustainability", phonetic: "suh-stey-nuh-BIL-i-tee" }
+                  ]}
                 />
               </div>
             </div>
@@ -962,13 +1102,13 @@ export default function App() {
               </ul>
             </div>
 
-            {library.length > 0 && (
-              <div className="bg-white rounded-[32px] p-8 border border-[#1a1a1a]/5 space-y-6">
-                <div className="flex flex-col gap-4">
-                  <h3 className="text-2xl font-bold flex items-center gap-2">
-                    <FileText size={24} className="text-[#5A5A40]" />
-                    Library
-                  </h3>
+            <div className="bg-white rounded-[32px] p-8 border border-[#1a1a1a]/5 space-y-6">
+              <div className="flex flex-col gap-4">
+                <h3 className="text-2xl font-bold flex items-center gap-2">
+                  <FileText size={24} className="text-[#5A5A40]" />
+                  Library
+                </h3>
+                {library.length > 0 && (
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1a1a1a]/40" size={16} />
                     <input
@@ -979,11 +1119,46 @@ export default function App() {
                       className="w-full pl-10 pr-4 py-2 bg-[#f5f5f0] rounded-xl text-sm font-sans focus:outline-none focus:ring-2 focus:ring-[#5A5A40]/20 border border-transparent focus:border-[#5A5A40]/20 transition-all"
                     />
                   </div>
-                </div>
-                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                  {filteredLibrary.length > 0 ? (
-                    filteredLibrary.map((entry) => (
-                      <div key={entry.id} className="group p-4 rounded-2xl hover:bg-[#1a1a1a]/5 transition-colors border border-[#1a1a1a]/5 hover:border-[#5A5A40]/20">
+                )}
+                {library.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={languageFilter}
+                      onChange={(e) => setLanguageFilter(e.target.value)}
+                      className="bg-[#f5f5f0] rounded-xl text-xs font-sans p-2 border border-transparent focus:border-[#5A5A40]/20 transition-all"
+                    >
+                      <option value="all">All Languages</option>
+                      {['English', 'Afrikaans', 'isiZulu', 'isiXhosa', 'Sesotho', 'Setswana'].map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                    <select
+                      value={dateRangeFilter}
+                      onChange={(e) => setDateRangeFilter(e.target.value)}
+                      className="bg-[#f5f5f0] rounded-xl text-xs font-sans p-2 border border-transparent focus:border-[#5A5A40]/20 transition-all"
+                    >
+                      <option value="all">All Time</option>
+                      <option value="last7">Last 7 Days</option>
+                      <option value="last30">Last 30 Days</option>
+                    </select>
+                  </div>
+                )}
+                {library.length > 0 && (
+                  <input
+                    type="text"
+                    placeholder="Filter by description keywords..."
+                    value={keywordFilter}
+                    onChange={(e) => setKeywordFilter(e.target.value)}
+                    className="w-full px-4 py-2 bg-[#f5f5f0] rounded-xl text-sm font-sans focus:outline-none focus:ring-2 focus:ring-[#5A5A40]/20 border border-transparent focus:border-[#5A5A40]/20 transition-all"
+                  />
+                )}
+              </div>
+              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                {library.length === 0 ? (
+                  <div className="text-center py-12 text-[#1a1a1a]/40 italic">
+                    No podcasts saved yet. Generate a podcast to see it here.
+                  </div>
+                ) : filteredLibrary.length > 0 ? (
+                  filteredLibrary.map((entry) => (
+                    <div key={entry.id} className="group p-4 rounded-2xl hover:bg-[#1a1a1a]/5 transition-colors border border-[#1a1a1a]/5 hover:border-[#5A5A40]/20">
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <h4 className="font-bold text-[#1a1a1a] group-hover:text-[#5A5A40] transition-colors line-clamp-1">
@@ -996,6 +1171,10 @@ export default function App() {
                             <span className="w-1 h-1 bg-[#1a1a1a]/10 rounded-full" />
                             <p className="text-[10px] text-[#5A5A40] uppercase tracking-widest font-bold">
                               {entry.language || 'English'}
+                            </p>
+                            <span className="w-1 h-1 bg-[#1a1a1a]/10 rounded-full" />
+                            <p className="text-[10px] text-[#5A5A40] uppercase tracking-widest font-bold">
+                              {Math.floor(entry.duration / 60)}:{Math.floor(entry.duration % 60).toString().padStart(2, '0')}
                             </p>
                           </div>
                         </div>
@@ -1028,13 +1207,12 @@ export default function App() {
                     </div>
                   ))
                 ) : (
-                    <div className="text-center py-12 text-[#1a1a1a]/40 italic">
-                      No podcasts found matching "{searchQuery}"
-                    </div>
-                  )}
-                </div>
+                  <div className="text-center py-12 text-[#1a1a1a]/40 italic">
+                    No podcasts found matching your filters.
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -1110,7 +1288,7 @@ export default function App() {
   );
 }
 
-function CharacterCard({ name, role, desc, icon, avatarUrl, samplePhrase, selectedLanguage }: { name: string, role: string, desc: string, icon: React.ReactNode, avatarUrl: string, samplePhrase: string, selectedLanguage: PodcastLanguage }) {
+function CharacterCard({ name, role, desc, icon, avatarUrl, samplePhrase, selectedLanguage, pronunciationGuide }: { name: string, role: string, desc: string, icon: React.ReactNode, avatarUrl: string, samplePhrase: string, selectedLanguage: PodcastLanguage, pronunciationGuide?: { term: string; phonetic: string }[] }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -1148,7 +1326,7 @@ function CharacterCard({ name, role, desc, icon, avatarUrl, samplePhrase, select
   return (
     <div className="flex gap-4 items-start group">
       <div className="relative shrink-0">
-        <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-sm bg-[#f5f5f0]">
+        <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-white shadow-md bg-[#f5f5f0] ring-1 ring-[#1a1a1a]/10">
           <img 
             src={avatarUrl} 
             alt={name} 
@@ -1182,6 +1360,18 @@ function CharacterCard({ name, role, desc, icon, avatarUrl, samplePhrase, select
           </button>
         </div>
         <p className="text-xs text-[#1a1a1a]/60 leading-relaxed italic">"{desc}"</p>
+        {pronunciationGuide && pronunciationGuide.length > 0 && (
+          <div className="mt-3 p-3 bg-[#f5f5f0] rounded-xl border border-[#1a1a1a]/5">
+            <p className="text-[9px] font-bold text-[#5A5A40] uppercase tracking-widest mb-1.5">Pronunciation Guide</p>
+            <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+              {pronunciationGuide.map((item, index) => (
+                <span key={index} className="text-[11px] text-[#1a1a1a]">
+                  <span className="font-bold">{item.term}</span>: <span className="italic text-[#5A5A40]">/{item.phonetic}/</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

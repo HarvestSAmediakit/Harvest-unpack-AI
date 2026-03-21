@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "Podcast": {
+      "title": "Podcast",
+      "description": "A generated podcast episode.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The UID of the user who created the podcast." },
+        "title": { "type": "string", "description": "The title of the podcast." },
+        "audioUrl": { "type": "string", "description": "The URL to the audio file." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "The date the podcast was created." }
+      },
+      "required": ["uid", "title", "audioUrl", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/podcasts/{podcastId}": {
+      "schema": { "$ref": "Podcast" },
+      "description": "Collection of all podcast episodes."
+    }
+  }
+}

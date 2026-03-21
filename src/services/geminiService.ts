@@ -17,13 +17,68 @@ export interface PodcastSegment {
   text: string;
 }
 
-export const AVAILABLE_CHARACTERS: { id: PodcastSpeaker; name: string; description: string }[] = [
-  { id: "Thabo", name: "Thabo", description: "Senior Agronomist & Market Analyst. Energetic, loves innovation." },
-  { id: "Lindiwe", name: "Lindiwe", description: "Livestock Specialist. Practical, witty." },
-  { id: "Dr. Thandi", name: "Dr. Thandi Mthembu", description: "Zambian Soil Scientist. Dry, sarcastic wit." },
-  { id: "JP BoerBot", name: "JP \"BoerBot\" van der Merwe", description: "Free State farmer-bot. Cheeky humor." },
-  { id: "Gogo Nomsa", name: "Gogo Nomsa", description: "Rural Development Specialist. Wise, maternal, Zulu-influenced." },
-  { id: "Prof. Dewald", name: "Prof. Dewald", description: "Climate Change Expert. Meticulous academic." },
+export interface Character {
+  id: PodcastSpeaker;
+  name: string;
+  description: string;
+  pronunciationGuide?: { term: string; phonetic: string }[];
+}
+
+export const AVAILABLE_CHARACTERS: Character[] = [
+  { 
+    id: "Thabo", 
+    name: "Thabo", 
+    description: "Senior Agronomist & Market Analyst. Energetic, loves innovation.",
+    pronunciationGuide: [
+      { term: "Agronomy", phonetic: "uh-GRON-uh-mee" },
+      { term: "Hydroponics", phonetic: "hahy-druh-PON-iks" }
+    ]
+  },
+  { 
+    id: "Lindiwe", 
+    name: "Lindiwe", 
+    description: "Livestock Specialist. Practical, witty.",
+    pronunciationGuide: [
+      { term: "Bovine", phonetic: "BOH-vahyn" },
+      { term: "Veterinary", phonetic: "VET-er-uh-ner-ee" }
+    ]
+  },
+  { 
+    id: "Dr. Thandi", 
+    name: "Dr. Thandi Mthembu", 
+    description: "Zambian Soil Scientist. Dry, sarcastic wit.",
+    pronunciationGuide: [
+      { term: "Pedology", phonetic: "pi-DOL-uh-jee" },
+      { term: "Nitrogen", phonetic: "NAY-truh-juhn" }
+    ]
+  },
+  { 
+    id: "JP BoerBot", 
+    name: "JP \"BoerBot\" van der Merwe", 
+    description: "Free State farmer-bot. Cheeky humor.",
+    pronunciationGuide: [
+      { term: "Boer", phonetic: "boor" },
+      { term: "Veld", phonetic: "felt" }
+    ]
+  },
+  { 
+    id: "Gogo Nomsa", 
+    name: "Gogo Nomsa", 
+    description: "Rural Development Specialist. Wise, maternal, Zulu-influenced.",
+    pronunciationGuide: [
+      { term: "Ubuntu", phonetic: "oo-BOON-too" },
+      { term: "Imbizo", phonetic: "im-BEE-zoh" }
+    ]
+  },
+  { 
+    id: "Prof. Dewald", 
+    name: "Prof. Dewald", 
+    description: "Climate Change Expert. Meticulous academic.",
+    pronunciationGuide: [
+      { term: "Meteorology", phonetic: "mee-tee-uh-ROL-uh-jee" },
+      { term: "Sustainability", phonetic: "suh-stey-nuh-BIL-i-tee" }
+    ]
+  },
 ];
 
 const parseJson = (text: string) => {
@@ -73,7 +128,8 @@ export const generatePodcastScript = async (
 
     LANGUAGE: The podcast MUST be generated in ${language}. 
     - If the language is not English, translate the core concepts and discussion naturally into ${language}.
-    - Characters should still maintain their unique personalities and cultural backgrounds.
+    - IMPORTANT: Ensure the output is strictly in ${language}. Do not mix with English unless it's a proper noun or technical term that is commonly used in ${language}.
+    - Characters should still maintain their unique personalities and cultural backgrounds, but speak in ${language}.
     - Use appropriate local idioms and expressions for ${language}.
 
     Core Objectives:
@@ -82,7 +138,7 @@ export const generatePodcastScript = async (
     3. Detailed Explanation: Break down complex agricultural concepts into simple, understandable terms in ${language}.
     4. Practical Application: Discuss how a farmer can actually use the information from the article in their daily operations.
     5. Minimal Promotion: Subtly mention Harvest Unpacked.
-    6. Duration: Aim for ~700-900 words to ensure a 3-4 minute podcast duration.
+    6. Duration: Aim for ~400-500 words to ensure a 2 minute podcast duration.
 
     The Team (Use ONLY these 2):
     ${characterDetails}
@@ -99,7 +155,7 @@ export const generatePodcastScript = async (
   try {
     const response = await getAi().models.generateContent({
       model,
-      contents: [{ parts: [{ text: `Article Content: ${articleText}\n\nGenerate a concise podcast script (3-4 minutes) in ${language} with EXACTLY these 2 characters: ${selectedCharacters.join(", ")}.` }] }],
+      contents: [{ parts: [{ text: `Article Content: ${articleText}\n\nGenerate a concise podcast script (2 minutes) in ${language} with EXACTLY these 2 characters: ${selectedCharacters.join(", ")}.` }] }],
       config: {
         systemInstruction,
         responseMimeType: "application/json",
@@ -123,7 +179,7 @@ export const generatePodcastScript = async (
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: `Article Content: ${articleText}\n\nGenerate a concise podcast script (3-4 minutes) in ${language} with EXACTLY these 2 characters: ${selectedCharacters.join(", ")}.`,
+            prompt: `Article Content: ${articleText}\n\nGenerate a concise podcast script (2 minutes) in ${language} with EXACTLY these 2 characters: ${selectedCharacters.join(", ")}.`,
             systemInstruction,
             responseFormat: "json_object"
           })
@@ -179,6 +235,18 @@ export const extractTextFromImage = async (base64Data: string, mimeType: string)
   }
 };
 
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> => {
+  try {
+    return await fn();
+  } catch (error: any) {
+    if (retries > 0 && (error.status === 429 || error.message?.includes("429"))) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return withRetry(fn, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+};
+
 export const generatePodcastAudio = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<string | null> => {
   const model = "gemini-2.5-flash-preview-tts";
   
@@ -204,17 +272,17 @@ export const generatePodcastAudio = async (script: PodcastSegment[], language: P
       }
     }
 
-    const batchSize = 10;
     const audioChunks: Uint8Array[] = [];
 
-    for (let i = 0; i < groupedSegments.length; i += batchSize) {
-      const batch = groupedSegments.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (segment) => {
-        const voiceName = voiceMap[segment.speaker] || "Fenrir";
-        try {
+    for (const segment of groupedSegments) {
+      const voiceName = voiceMap[segment.speaker] || "Fenrir";
+      
+      let pcmData: string | undefined;
+      try {
+        pcmData = await withRetry(async () => {
           const response = await getAi().models.generateContent({
             model,
-            contents: [{ parts: [{ text: `Say the following in ${language} as ${segment.speaker} with a strong, authentic South African accent. If the text is in ${language}, read it naturally: ${segment.text}` }] }],
+            contents: [{ parts: [{ text: `Say the following in ${language} as ${segment.speaker}. IMPORTANT: The output MUST be in ${language}. If the text is in ${language}, read it naturally: ${segment.text}` }] }],
             config: {
               responseModalities: [Modality.AUDIO],
               speechConfig: {
@@ -224,75 +292,51 @@ export const generatePodcastAudio = async (script: PodcastSegment[], language: P
               },
             },
           });
-          return { type: 'pcm', data: response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data };
-        } catch (e: any) {
-          console.error(`Gemini TTS Error for ${segment.speaker}:`, e);
-          const errorMessage = e.message || "";
-          if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
-            console.log(`Attempting OpenAI TTS fallback for ${segment.speaker}...`);
-            try {
-              const openAiVoiceMap: Record<string, string> = {
-                "Thabo": "onyx",
-                "Lindiwe": "shimmer",
-                "Dr. Thandi": "nova",
-                "Dr. Thandi Mthembu": "nova",
-                "JP BoerBot": "echo",
-                "JP \"BoerBot\" van der Merwe": "echo",
-                "Gogo Nomsa": "fable",
-                "Prof. Dewald": "alloy"
-              };
-              const fallbackResponse = await fetch("/api/openai/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  text: segment.text,
-                  voice: openAiVoiceMap[segment.speaker] || "alloy"
-                })
-              });
-              if (fallbackResponse.ok) {
-                const blob = await fallbackResponse.blob();
-                return { type: 'blob', data: blob };
-              }
-            } catch (fallbackError) {
-              console.error("OpenAI TTS Fallback Error:", fallbackError);
-            }
+          return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        });
+      } catch (e: any) {
+        console.error(`Gemini TTS Error for ${segment.speaker}:`, e);
+        const errorMessage = e.message || "";
+        if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
+          console.log(`Attempting OpenAI TTS fallback for ${segment.speaker}...`);
+          try {
+            const openAiVoiceMap: Record<string, string> = {
+              "Thabo": "onyx",
+              "Lindiwe": "shimmer",
+              "Dr. Thandi": "nova",
+              "Dr. Thandi Mthembu": "nova",
+              "JP BoerBot": "echo",
+              "JP \"BoerBot\" van der Merwe": "echo",
+              "Gogo Nomsa": "fable",
+              "Prof. Dewald": "alloy"
+            };
+            const fallbackResponse = await fetch("/api/openai/tts", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                text: segment.text,
+                voice: openAiVoiceMap[segment.speaker] || "alloy"
+              }),
+            });
+            if (!fallbackResponse.ok) throw new Error("OpenAI TTS failed");
+            const blob = await fallbackResponse.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+            pcmData = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+          } catch (fallbackError: any) {
+            console.error("OpenAI Fallback Error:", fallbackError);
+            if (fallbackError.message?.includes("OPENAI_API_KEY")) throw fallbackError;
           }
-          return null;
         }
-      });
-
-      const results = await Promise.all(batchPromises);
-      for (const result of results) {
-        if (!result) continue;
-        if (result.type === 'pcm' && typeof result.data === 'string') {
-          const binaryString = window.atob(result.data);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          audioChunks.push(bytes);
-        } else if (result.type === 'blob' && result.data instanceof Blob) {
-          // Convert blob to AudioBuffer, then to PCM bytes (24kHz mono) to match Gemini
-          const arrayBuffer = await (result.data as Blob).arrayBuffer();
-          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-          
-          // Resample to 24kHz mono
-          const offlineCtx = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * 24000), 24000);
-          const source = offlineCtx.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(offlineCtx.destination);
-          source.start();
-          const resampledBuffer = await offlineCtx.startRendering();
-          
-          const channelData = resampledBuffer.getChannelData(0);
-          const pcmData = new Int16Array(channelData.length);
-          for (let i = 0; i < channelData.length; i++) {
-            const s = Math.max(-1, Math.min(1, channelData[i]));
-            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-          }
-          audioChunks.push(new Uint8Array(pcmData.buffer, pcmData.byteOffset, pcmData.byteLength));
+      }
+      
+      if (pcmData) {
+        // Convert base64 to Uint8Array
+        const binaryString = atob(pcmData);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
         }
+        audioChunks.push(bytes);
       }
     }
 
