@@ -1,0 +1,5 @@
+{
+  "name": "Harvest Unpacked DeepDive AI Podcasts",
+  "description": "Generate engaging South African agricultural podcasts from PDFs, images, Word docs, or pasted text featuring Thabo and Lindiwe.",
+  "requestFramePermissions": ["camera"]
+}
