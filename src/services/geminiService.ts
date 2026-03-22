@@ -22,6 +22,7 @@ export interface Character {
   name: string;
   description: string;
   pronunciationGuide?: { term: string; phonetic: string }[];
+  samplePhrase?: string;
 }
 
 export const AVAILABLE_CHARACTERS: Character[] = [
@@ -32,7 +33,8 @@ export const AVAILABLE_CHARACTERS: Character[] = [
     pronunciationGuide: [
       { term: "Agronomy", phonetic: "uh-GRON-uh-mee" },
       { term: "Hydroponics", phonetic: "hahy-druh-PON-iks" }
-    ]
+    ],
+    samplePhrase: "Welcome to Harvest Unpacked! Let's dive into the latest agricultural innovations."
   },
   { 
     id: "Lindiwe", 
@@ -41,7 +43,8 @@ export const AVAILABLE_CHARACTERS: Character[] = [
     pronunciationGuide: [
       { term: "Bovine", phonetic: "BOH-vahyn" },
       { term: "Veterinary", phonetic: "VET-er-uh-ner-ee" }
-    ]
+    ],
+    samplePhrase: "Hello everyone! Let's talk about practical solutions for your livestock."
   },
   { 
     id: "Dr. Thandi", 
@@ -50,7 +53,8 @@ export const AVAILABLE_CHARACTERS: Character[] = [
     pronunciationGuide: [
       { term: "Pedology", phonetic: "pi-DOL-uh-jee" },
       { term: "Nitrogen", phonetic: "NAY-truh-juhn" }
-    ]
+    ],
+    samplePhrase: "Greetings. Let's dig deep into the science of soil, shall we?"
   },
   { 
     id: "JP BoerBot", 
@@ -59,7 +63,8 @@ export const AVAILABLE_CHARACTERS: Character[] = [
     pronunciationGuide: [
       { term: "Boer", phonetic: "boor" },
       { term: "Veld", phonetic: "felt" }
-    ]
+    ],
+    samplePhrase: "Howzit! Ready to talk farming with a bit of a spark?"
   },
   { 
     id: "Gogo Nomsa", 
@@ -68,7 +73,8 @@ export const AVAILABLE_CHARACTERS: Character[] = [
     pronunciationGuide: [
       { term: "Ubuntu", phonetic: "oo-BOON-too" },
       { term: "Imbizo", phonetic: "im-BEE-zoh" }
-    ]
+    ],
+    samplePhrase: "Sanibonani. Let's share wisdom and grow our communities together."
   },
   { 
     id: "Prof. Dewald", 
@@ -77,7 +83,8 @@ export const AVAILABLE_CHARACTERS: Character[] = [
     pronunciationGuide: [
       { term: "Meteorology", phonetic: "mee-tee-uh-ROL-uh-jee" },
       { term: "Sustainability", phonetic: "suh-stey-nuh-BIL-i-tee" }
-    ]
+    ],
+    samplePhrase: "Good day. It is crucial we examine the data on sustainable practices."
   },
 ];
 
@@ -374,7 +381,7 @@ export const generatePodcastAudio = async (script: PodcastSegment[], language: P
   }
 };
 
-export const generateSampleAudio = async (speaker: "Thabo" | "Lindiwe" | "Dr. Thandi" | "JP BoerBot", text: string, language: PodcastLanguage = "English"): Promise<string | null> => {
+export const generateSampleAudio = async (speaker: PodcastSpeaker, text: string, language: PodcastLanguage = "English"): Promise<string | null> => {
   const model = "gemini-2.5-flash-preview-tts";
   
   const voiceMap: Record<string, string> = {

@@ -120,7 +120,10 @@ export default function App() {
   const [selectedLanguage, setSelectedLanguage] = useState<PodcastLanguage>('English');
   const [selectedCharacters, setSelectedCharacters] = useState<PodcastSpeaker[]>(['Thabo', 'Lindiwe']);
   const [hasCustomKey, setHasCustomKey] = useState(false);
+  const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
+  const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const sampleAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const checkKey = async () => {
@@ -521,6 +524,48 @@ export default function App() {
     }
   };
 
+  const playSample = async (e: React.MouseEvent, charId: PodcastSpeaker, samplePhrase: string) => {
+    e.stopPropagation();
+    
+    if (playingSampleId === charId) {
+      if (sampleAudioRef.current) {
+        sampleAudioRef.current.pause();
+      }
+      setPlayingSampleId(null);
+      return;
+    }
+
+    if (sampleAudioRef.current) {
+      sampleAudioRef.current.pause();
+      setPlayingSampleId(null);
+    }
+
+    setLoadingSampleId(charId);
+    
+    try {
+      const audioData = await generateSampleAudio(charId, samplePhrase, selectedLanguage);
+      if (audioData) {
+        const audioBlob = await fetch(audioData).then(r => r.blob());
+        const url = URL.createObjectURL(audioBlob);
+        
+        const audio = new Audio(url);
+        sampleAudioRef.current = audio;
+        
+        audio.onended = () => {
+          setPlayingSampleId(null);
+          URL.revokeObjectURL(url);
+        };
+        
+        audio.play();
+        setPlayingSampleId(charId);
+      }
+    } catch (err) {
+      console.error("Failed to play sample:", err);
+    } finally {
+      setLoadingSampleId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f5f5f0] text-[#1a1a1a] font-serif selection:bg-[#5A5A40] selection:text-white">
       {/* Header */}
@@ -650,11 +695,34 @@ export default function App() {
                         )}>
                           {selectedCharacters.includes(char.id) && <Check size={12} className="text-white" />}
                         </div>
-                        <div>
-                          <p className={cn(
-                            "text-sm font-bold",
-                            selectedCharacters.includes(char.id) ? "text-[#5A5A40]" : "text-[#1a1a1a]"
-                          )}>{char.name}</p>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <p className={cn(
+                              "text-sm font-bold",
+                              selectedCharacters.includes(char.id) ? "text-[#5A5A40]" : "text-[#1a1a1a]"
+                            )}>{char.name}</p>
+                            {char.samplePhrase && (
+                              <button
+                                onClick={(e) => playSample(e, char.id, char.samplePhrase!)}
+                                disabled={loadingSampleId !== null && loadingSampleId !== char.id}
+                                className={cn(
+                                  "p-1.5 rounded-full transition-colors",
+                                  playingSampleId === char.id || loadingSampleId === char.id
+                                    ? "bg-[#5A5A40] text-white"
+                                    : "hover:bg-[#1a1a1a]/5 text-[#1a1a1a]/40 hover:text-[#5A5A40]"
+                                )}
+                                title="Play Sample"
+                              >
+                                {loadingSampleId === char.id ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : playingSampleId === char.id ? (
+                                  <Volume2 size={14} className="animate-pulse" />
+                                ) : (
+                                  <Play size={14} className="ml-0.5" />
+                                )}
+                              </button>
+                            )}
+                          </div>
                           <p className="text-[10px] text-[#1a1a1a]/60 font-sans leading-tight mt-1">{char.description}</p>
                         </div>
                       </button>
