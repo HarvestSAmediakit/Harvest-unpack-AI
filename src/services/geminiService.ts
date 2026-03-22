@@ -119,7 +119,7 @@ export const generatePodcastScript = async (
   language: PodcastLanguage = "English",
   selectedCharacters: PodcastSpeaker[] = ["Thabo", "Lindiwe"]
 ): Promise<PodcastSegment[]> => {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   
   const characterDetails = AVAILABLE_CHARACTERS
     .filter(c => selectedCharacters.includes(c.id))
@@ -223,7 +223,7 @@ export const generatePodcastScript = async (
 };
 
 export const extractTextFromImage = async (base64Data: string, mimeType: string): Promise<string> => {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   const prompt = "Analyze this image in detail. If it contains text or is an article, extract the full content accurately. If it is a photograph or diagram, describe in detail what is shown, including any agricultural context, subjects, conditions, and notable features so it can be discussed in a podcast. Return the extracted text and/or detailed description.";
 
   try {
@@ -478,7 +478,7 @@ export const generateSampleAudio = async (speaker: PodcastSpeaker, text: string,
 };
 
 export const generatePodcastSummary = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<string> => {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   const prompt = `Based on the following podcast script, provide a very brief (1-2 sentence) summary or description in ${language} that would entice a listener.
   
   Script:
@@ -521,7 +521,7 @@ export interface PodcastChapter {
 }
 
 export const generatePodcastChapters = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<PodcastChapter[]> => {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   const prompt = `Based on the following podcast script, identify 3-4 key "chapters" or segments. For each, provide a short title and a brief description in ${language} of what is discussed in that part.
   
   Script:
@@ -563,7 +563,7 @@ export const generatePodcastChapters = async (script: PodcastSegment[], language
 };
 
 export const generateShowNotes = async (script: PodcastSegment[], chapters: PodcastChapter[], language: PodcastLanguage = "English"): Promise<string> => {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-3.1-flash-lite-preview";
   const prompt = `Generate detailed show notes for a podcast episode in \${language} based on the following script and chapters.
   
   The show notes should include:

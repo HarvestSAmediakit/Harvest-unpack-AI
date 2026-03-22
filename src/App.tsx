@@ -679,11 +679,19 @@ export default function App() {
                   <label className="text-xs font-sans font-bold uppercase tracking-widest text-[#1a1a1a]/40">Select 2 AI Characters</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {AVAILABLE_CHARACTERS.map((char) => (
-                      <button
+                      <div
                         key={char.id}
                         onClick={() => toggleCharacter(char.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleCharacter(char.id);
+                          }
+                        }}
                         className={cn(
-                          "p-4 rounded-2xl text-left transition-all border flex items-start gap-3",
+                          "p-4 rounded-2xl text-left transition-all border flex items-start gap-3 cursor-pointer",
                           selectedCharacters.includes(char.id)
                             ? "bg-[#5A5A40]/5 border-[#5A5A40] ring-1 ring-[#5A5A40]"
                             : "bg-white border-[#1a1a1a]/10 hover:border-[#5A5A40]/40"
@@ -725,7 +733,7 @@ export default function App() {
                           </div>
                           <p className="text-[10px] text-[#1a1a1a]/60 font-sans leading-tight mt-1">{char.description}</p>
                         </div>
-                      </button>
+                      </div>
                     ))}
                   </div>
                   <p className="text-[10px] text-[#1a1a1a]/40 font-sans italic">
