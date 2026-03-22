@@ -10,7 +10,7 @@ const getAi = () => {
   return new GoogleGenAI({ apiKey: key });
 };
 
-export type PodcastSpeaker = "Thabo" | "Lindiwe" | "Dr. Thandi" | "JP BoerBot" | "Gogo Nomsa" | "Prof. Dewald";
+export type PodcastSpeaker = "Thabo" | "Lindiwe";
 
 export interface PodcastSegment {
   speaker: PodcastSpeaker;
@@ -29,63 +29,23 @@ export const AVAILABLE_CHARACTERS: Character[] = [
   { 
     id: "Thabo", 
     name: "Thabo", 
-    description: "Senior Agronomist & Market Analyst. Energetic, loves innovation.",
+    description: "Senior Agronomist & Market Analyst. Energetic, loves innovation. Naturally uses South African slang like 'lekker', 'howzit', 'sharp sharp', 'eish', 'make a plan', 'boet', and 'bru'.",
     pronunciationGuide: [
       { term: "Agronomy", phonetic: "uh-GRON-uh-mee" },
       { term: "Hydroponics", phonetic: "hahy-druh-PON-iks" }
     ],
-    samplePhrase: "Welcome to Harvest Unpacked! Let's dive into the latest agricultural innovations."
+    samplePhrase: "Howzit everyone! Welcome to Harvest Unpacked! Let's dive into the latest agricultural innovations, it's going to be lekker."
   },
   { 
     id: "Lindiwe", 
     name: "Lindiwe", 
-    description: "Livestock Specialist. Practical, witty.",
+    description: "Livestock Specialist. Practical, witty. Naturally uses South African slang like 'yoh', 'shame', 'now-now', 'just now', 'ag no man', 'sho', and 'heita'.",
     pronunciationGuide: [
       { term: "Bovine", phonetic: "BOH-vahyn" },
       { term: "Veterinary", phonetic: "VET-er-uh-ner-ee" }
     ],
-    samplePhrase: "Hello everyone! Let's talk about practical solutions for your livestock."
-  },
-  { 
-    id: "Dr. Thandi", 
-    name: "Dr. Thandi Mthembu", 
-    description: "Zambian Soil Scientist. Dry, sarcastic wit.",
-    pronunciationGuide: [
-      { term: "Pedology", phonetic: "pi-DOL-uh-jee" },
-      { term: "Nitrogen", phonetic: "NAY-truh-juhn" }
-    ],
-    samplePhrase: "Greetings. Let's dig deep into the science of soil, shall we?"
-  },
-  { 
-    id: "JP BoerBot", 
-    name: "JP \"BoerBot\" van der Merwe", 
-    description: "Free State farmer-bot. Cheeky humor.",
-    pronunciationGuide: [
-      { term: "Boer", phonetic: "boor" },
-      { term: "Veld", phonetic: "felt" }
-    ],
-    samplePhrase: "Howzit! Ready to talk farming with a bit of a spark?"
-  },
-  { 
-    id: "Gogo Nomsa", 
-    name: "Gogo Nomsa", 
-    description: "Rural Development Specialist. Wise, maternal, Zulu-influenced.",
-    pronunciationGuide: [
-      { term: "Ubuntu", phonetic: "oo-BOON-too" },
-      { term: "Imbizo", phonetic: "im-BEE-zoh" }
-    ],
-    samplePhrase: "Sanibonani. Let's share wisdom and grow our communities together."
-  },
-  { 
-    id: "Prof. Dewald", 
-    name: "Prof. Dewald", 
-    description: "Climate Change Expert. Meticulous academic.",
-    pronunciationGuide: [
-      { term: "Meteorology", phonetic: "mee-tee-uh-ROL-uh-jee" },
-      { term: "Sustainability", phonetic: "suh-stey-nuh-BIL-i-tee" }
-    ],
-    samplePhrase: "Good day. It is crucial we examine the data on sustainable practices."
-  },
+    samplePhrase: "Heita! Let's get our hands dirty and talk about practical solutions for your livestock, now-now."
+  }
 ];
 
 const parseJson = (text: string) => {
@@ -131,28 +91,32 @@ export const generatePodcastScript = async (
     Your task is to create a realistic, incredibly fun, engaging, and highly educational deep dive conversation between EXACTLY the 2 characters provided below.
     The readership of Harvest SA magazine needs to absolutely love this—it should feel like the best talkshow podcast ever!
     
+    CRITICAL GOAL: The deep dive MUST deal directly with the content of the uploaded Harvest SA article. The talkshow needs to PROMOTE the content of the article, making the reader understand what it's about in a highly informative and entertaining way. We want the listeners to absolutely fall in love with the presenters! Make them charismatic, witty, passionate, and incredibly lovable.
+
     DO NOT use any other characters. ONLY use:
     \${selectedCharacters.join(", ")}
 
-    LANGUAGE: The podcast MUST be generated in \${language}. 
+    LANGUAGE & SLANG: The podcast MUST be generated in \${language}. 
     - If the language is not English, translate the core concepts and discussion naturally into \${language}.
     - IMPORTANT: Ensure the output is strictly in \${language}. Do not mix with English unless it's a proper noun or technical term that is commonly used in \${language}.
     - Characters should still maintain their unique personalities and cultural backgrounds, but speak in \${language}.
-    - Use appropriate local idioms and expressions for \${language}.
+    - INTEGRATE AUTHENTIC SOUTH AFRICAN SLANG: Use local idioms, colloquialisms, and slang contextually and naturally to enhance the local flavor and connection with the audience. Do not force it, but ensure it feels like a genuine South African conversation (e.g., using words like 'lekker', 'howzit', 'eish', 'yoh', 'now-now', 'shame', 'sharp sharp', 'boet', 'bru' where appropriate).
 
     Core Objectives:
-    1. Hook the Audience: Start the podcast with a fun, high-energy, and catchy intro that hooks the Harvest SA magazine readership immediately.
-    2. Fun & Informative Deep Dive: The 2 chosen characters should have a natural, highly entertaining, back-and-forth deep dive discussion about the supplied material's contents.
-    3. Detailed & Accessible Explanation: Break down complex agricultural concepts into simple, understandable, and relatable terms.
-    4. Practical Application: Discuss how a farmer can actually use the information from the material in their daily operations, keeping it practical but lively.
-    5. Magazine Shoutout: Enthusiastically mention Harvest SA magazine and the Harvest Unpacked podcast.
-    6. Duration: Aim for ~600-800 words to ensure a substantial, engaging podcast duration.
+    1. Hook the Audience & Promote the Article: Start the podcast with a fun, high-energy, and catchy intro that hooks the Harvest SA magazine readership immediately. Enthusiastically introduce the specific article being discussed today.
+    2. Lovable Presenters: Make the banter between the two presenters so charming, funny, and warm that the audience falls in love with them. Their chemistry should be electric.
+    3. Fun & Informative Deep Dive: The 2 chosen characters should have a natural, highly entertaining, back-and-forth deep dive discussion about the supplied material's contents. They must clearly explain what the article is about.
+    4. Detailed & Accessible Explanation: Break down complex agricultural concepts from the article into simple, understandable, and relatable terms.
+    5. Practical Application: Discuss how a farmer can actually use the information from the material in their daily operations, keeping it practical but lively.
+    6. Magazine Shoutout: Enthusiastically mention Harvest SA magazine, praise the author/content of the article, and encourage listeners to go read the full piece.
+    7. Duration: Aim for ~600-800 words to ensure a substantial, engaging podcast duration.
 
     The Team (Use ONLY these 2):
     \${characterDetails}
 
     Tone:
     - Extremely fun, entertaining, and informative.
+    - Charismatic, lovable, and warm.
     - Authentic and culturally resonant for \${language}.
     - High energy, like a top-tier radio talkshow.
     - Realistic, witty banter that Harvest SA readers will love.
@@ -256,7 +220,7 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Pr
   }
 };
 
-export const generatePodcastAudio = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<string | null> => {
+export const generatePodcastAudio = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<Blob | null> => {
   const model = "gemini-2.5-flash-preview-tts";
   
   const voiceMap: Record<string, string> = {
@@ -281,7 +245,7 @@ export const generatePodcastAudio = async (script: PodcastSegment[], language: P
       }
     }
 
-    const audioChunks: Uint8Array[] = [];
+    const audioChunks: { bytes: Uint8Array, speaker: string }[] = [];
 
     for (const segment of groupedSegments) {
       const voiceName = voiceMap[segment.speaker] || "Fenrir";
@@ -345,7 +309,7 @@ export const generatePodcastAudio = async (script: PodcastSegment[], language: P
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
-        audioChunks.push(bytes);
+        audioChunks.push({ bytes, speaker: segment.speaker });
       }
     }
 
@@ -353,12 +317,17 @@ export const generatePodcastAudio = async (script: PodcastSegment[], language: P
       throw new Error("The AI failed to generate any audio data.");
     }
 
-    const totalLength = audioChunks.reduce((acc, curr) => acc + curr.length, 0);
+    const totalLength = audioChunks.reduce((acc, curr) => acc + curr.bytes.length, 0);
     const combinedPcm = new Uint8Array(totalLength);
     let offset = 0;
+    let sampleOffset = 0;
+    const markers: { title: string; sampleOffset: number }[] = [];
+    
     for (const chunk of audioChunks) {
-      combinedPcm.set(chunk, offset);
-      offset += chunk.length;
+      markers.push({ title: chunk.speaker, sampleOffset });
+      combinedPcm.set(chunk.bytes, offset);
+      offset += chunk.bytes.length;
+      sampleOffset += chunk.bytes.length / 2;
     }
 
     // Convert combined PCM to base64 for enhanceAudio
@@ -368,7 +337,7 @@ export const generatePodcastAudio = async (script: PodcastSegment[], language: P
     }
     const finalBase64 = window.btoa(binary);
 
-    return enhanceAudio(finalBase64);
+    return enhanceAudio(finalBase64, markers);
   } catch (e: any) {
     console.error("Failed to generate audio", e);
     if (e instanceof Error) {
@@ -381,7 +350,7 @@ export const generatePodcastAudio = async (script: PodcastSegment[], language: P
   }
 };
 
-export const generateSampleAudio = async (speaker: PodcastSpeaker, text: string, language: PodcastLanguage = "English"): Promise<string | null> => {
+export const generateSampleAudio = async (speaker: PodcastSpeaker, text: string, language: PodcastLanguage = "English"): Promise<Blob | null> => {
   const model = "gemini-2.5-flash-preview-tts";
   
   const voiceMap: Record<string, string> = {
@@ -607,5 +576,171 @@ export const generateShowNotes = async (script: PodcastSegment[], chapters: Podc
       }
     }
     return "Failed to generate show notes.";
+  }
+};
+
+export interface GlossaryTerm {
+  term: string;
+  definition: string;
+}
+
+export const generateGlossary = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<GlossaryTerm[]> => {
+  const model = "gemini-3.1-flash-lite-preview";
+  const prompt = `Identify any technical agricultural terms, jargon, or complex concepts used in the following podcast script.
+  Create a glossary that defines these terms in simple, easy-to-understand language.
+  The glossary MUST be in ${language}.
+  
+  Return the output strictly as a JSON array of objects, where each object has a "term" and a "definition" property.
+  Do NOT wrap the JSON in markdown code blocks. Just return the raw JSON array.
+  If there are no technical terms, return an empty array [].
+  
+  Script:
+  ${script.map(s => `${s.speaker}: ${s.text}`).join("\n")}
+  `;
+
+  try {
+    const response = await getAi().models.generateContent({
+      model,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const text = response.text || "[]";
+    try {
+      return JSON.parse(text);
+    } catch (parseError) {
+      console.error("Failed to parse glossary JSON", parseError);
+      return [];
+    }
+  } catch (e: any) {
+    console.error("Failed to generate glossary", e);
+    const errorMessage = e.message || "";
+    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
+      console.log("Attempting OpenAI fallback for glossary...");
+      try {
+        const fallbackResponse = await fetch("/api/openai/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, responseFormat: "json_object" })
+        });
+        if (fallbackResponse.ok) {
+          const data = await fallbackResponse.json();
+          // OpenAI might return it wrapped in an object if we used json_object
+          if (data.text) {
+             try {
+               const parsed = JSON.parse(data.text);
+               if (Array.isArray(parsed)) return parsed;
+               if (parsed.glossary && Array.isArray(parsed.glossary)) return parsed.glossary;
+               if (parsed.terms && Array.isArray(parsed.terms)) return parsed.terms;
+             } catch (e) {
+               return [];
+             }
+          }
+        }
+      } catch (fallbackError) {
+        console.error("OpenAI Fallback Error (Glossary):", fallbackError);
+      }
+    }
+    return [];
+  }
+};
+
+export const aiSearchPodcasts = async (query: string, podcasts: { id: string, title: string, description: string }[]): Promise<string[]> => {
+  if (podcasts.length === 0 || !query.trim()) return [];
+  
+  const model = "gemini-3.1-flash-lite-preview";
+  const prompt = `You are an AI search assistant. A user is searching for podcasts with the query: "${query}".
+  
+  Here is the list of available podcasts:
+  ${JSON.stringify(podcasts, null, 2)}
+  
+  Analyze the user's natural language query and the podcast titles and descriptions. Find the podcasts that best match the query conceptually, not just by exact keyword.
+  Return a JSON array of strings containing ONLY the IDs of the matching podcasts. If none match, return an empty array [].`;
+
+  try {
+    const response = await getAi().models.generateContent({
+      model,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    const result = parseJson(response.text || "[]");
+    return Array.isArray(result) ? result : [];
+  } catch (e: any) {
+    console.error("AI Search Error:", e);
+    const errorMessage = e.message || "";
+    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
+      try {
+        const fallbackResponse = await fetch("/api/openai/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, responseFormat: "json_object" })
+        });
+        if (fallbackResponse.ok) {
+          const data = await fallbackResponse.json();
+          const result = parseJson(data.text || "[]");
+          return Array.isArray(result) ? result : [];
+        }
+      } catch (fallbackError) {
+        console.error("OpenAI Fallback Error (AI Search):", fallbackError);
+      }
+    }
+    // Fallback to basic text search if AI fails
+    return podcasts
+      .filter(p => p.title.toLowerCase().includes(query.toLowerCase()) || p.description.toLowerCase().includes(query.toLowerCase()))
+      .map(p => p.id);
+  }
+};
+
+export const generateMetadata = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<{ keywords: string[], topics: string[] }> => {
+  const model = "gemini-3.1-flash-lite-preview";
+  const prompt = `Based on the following podcast script, generate a list of 5-8 relevant keywords and 2-4 main topics discussed.
+  
+  Script:
+  ${script.map(s => `${s.speaker}: ${s.text}`).join("\n")}
+  
+  Return a JSON object with "keywords" (array of strings) and "topics" (array of strings).`;
+
+  try {
+    const response = await getAi().models.generateContent({
+      model,
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    const result = parseJson(response.text || "{}");
+    return {
+      keywords: Array.isArray(result.keywords) ? result.keywords : [],
+      topics: Array.isArray(result.topics) ? result.topics : []
+    };
+  } catch (e: any) {
+    console.error("Failed to generate metadata", e);
+    const errorMessage = e.message || "";
+    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
+      try {
+        const fallbackResponse = await fetch("/api/openai/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, responseFormat: "json_object" })
+        });
+        if (fallbackResponse.ok) {
+          const data = await fallbackResponse.json();
+          const result = parseJson(data.text || "{}");
+          return {
+            keywords: Array.isArray(result.keywords) ? result.keywords : [],
+            topics: Array.isArray(result.topics) ? result.topics : []
+          };
+        }
+      } catch (fallbackError) {
+        console.error("OpenAI Fallback Error (Metadata):", fallbackError);
+      }
+    }
+    return { keywords: [], topics: [] };
   }
 };

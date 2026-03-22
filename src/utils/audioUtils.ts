@@ -44,11 +44,16 @@ export const pcmToWav = (base64Pcm: string): Blob => {
   return new Blob([buffer], { type: 'audio/wav' });
 };
 
+export interface AudioMarker {
+  title: string;
+  sampleOffset: number;
+}
+
 /**
  * Enhances the audio by applying normalization, high-pass filtering, 
  * and a presence boost to make it sound more like a professional podcast.
  */
-export const enhanceAudio = async (base64Pcm: string): Promise<Blob> => {
+export const enhanceAudio = async (base64Pcm: string, markers?: AudioMarker[]): Promise<Blob> => {
   const binaryString = atob(base64Pcm);
   const dataSize = binaryString.length;
   const sampleCount = dataSize / 2;
@@ -106,23 +111,37 @@ export const enhanceAudio = async (base64Pcm: string): Promise<Blob> => {
   const renderedBuffer = await offlineCtx.startRendering();
 
   // Convert rendered AudioBuffer back to WAV
-  return audioBufferToWav(renderedBuffer);
+  return audioBufferToWav(renderedBuffer, markers);
 };
 
 /**
- * Converts an AudioBuffer to a WAV data URI.
+ * Converts an AudioBuffer to a WAV data URI, optionally with cue/chapter markers.
  */
-function audioBufferToWav(buffer: AudioBuffer): Blob {
+function audioBufferToWav(buffer: AudioBuffer, markers?: AudioMarker[]): Blob {
   const length = buffer.length * 2;
-  const wavBuffer = new ArrayBuffer(44 + length);
+  
+  let extraSize = 0;
+  let listChunkSize = 4; // "adtl"
+  
+  if (markers && markers.length > 0) {
+    extraSize += 8 + 4 + (24 * markers.length); // cue chunk header + num cue points + cue points
+    
+    for (const marker of markers) {
+      let textLen = marker.title.length + 1; // +1 for null terminator
+      if (textLen % 2 !== 0) textLen += 1; // pad to even
+      listChunkSize += 8 + 4 + textLen; // labl header + cue point ID + text
+    }
+    extraSize += 8 + listChunkSize; // LIST chunk header + listChunkSize
+  }
+
+  const wavBuffer = new ArrayBuffer(44 + length + extraSize);
   const view = new DataView(wavBuffer);
-  const channels = [];
   const sampleRate = buffer.sampleRate;
   let offset = 0;
 
   // RIFF identifier
   writeString(view, offset, 'RIFF'); offset += 4;
-  view.setUint32(offset, 36 + length, true); offset += 4;
+  view.setUint32(offset, 36 + length + extraSize, true); offset += 4;
   writeString(view, offset, 'WAVE'); offset += 4;
   writeString(view, offset, 'fmt '); offset += 4;
   view.setUint32(offset, 16, true); offset += 4;
@@ -140,6 +159,46 @@ function audioBufferToWav(buffer: AudioBuffer): Blob {
     const sample = Math.max(-1, Math.min(1, channelData[i]));
     view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
     offset += 2;
+  }
+
+  if (markers && markers.length > 0) {
+    // cue chunk
+    writeString(view, offset, 'cue '); offset += 4;
+    view.setUint32(offset, 4 + 24 * markers.length, true); offset += 4;
+    view.setUint32(offset, markers.length, true); offset += 4;
+    
+    for (let i = 0; i < markers.length; i++) {
+      const marker = markers[i];
+      view.setUint32(offset, i + 1, true); offset += 4; // ID
+      view.setUint32(offset, marker.sampleOffset, true); offset += 4; // Position
+      writeString(view, offset, 'data'); offset += 4; // Data Chunk ID
+      view.setUint32(offset, 0, true); offset += 4; // Chunk Start
+      view.setUint32(offset, 0, true); offset += 4; // Block Start
+      view.setUint32(offset, marker.sampleOffset, true); offset += 4; // Sample Offset
+    }
+    
+    // LIST chunk
+    writeString(view, offset, 'LIST'); offset += 4;
+    view.setUint32(offset, listChunkSize, true); offset += 4;
+    writeString(view, offset, 'adtl'); offset += 4;
+    
+    for (let i = 0; i < markers.length; i++) {
+      const marker = markers[i];
+      writeString(view, offset, 'labl'); offset += 4;
+      
+      let textLen = marker.title.length + 1;
+      const needsPadding = textLen % 2 !== 0;
+      if (needsPadding) textLen += 1;
+      
+      view.setUint32(offset, 4 + textLen, true); offset += 4; // SubchunkSize
+      view.setUint32(offset, i + 1, true); offset += 4; // Cue Point ID
+      
+      writeString(view, offset, marker.title); offset += marker.title.length;
+      view.setUint8(offset, 0); offset += 1; // null terminator
+      if (needsPadding) {
+        view.setUint8(offset, 0); offset += 1; // padding
+      }
+    }
   }
 
   return new Blob([wavBuffer], { type: 'audio/wav' });

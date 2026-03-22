@@ -23,6 +23,7 @@ import {
   Share2,
   Copy,
   Check,
+  Code,
   Zap,
   Clock,
   BookOpen,
@@ -41,7 +42,9 @@ import {
   Thermometer,
   Twitter,
   Facebook,
-  Linkedin
+  Linkedin,
+  MessageCircle,
+  Link as LinkIcon
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { extractTextFromFile, InputType } from './services/textExtractionService';
@@ -52,6 +55,10 @@ import {
   generatePodcastSummary,
   generatePodcastChapters,
   generateShowNotes,
+  generateGlossary,
+  aiSearchPodcasts,
+  generateMetadata,
+  GlossaryTerm,
   PodcastSegment,
   PodcastChapter,
   PodcastLanguage,
@@ -73,8 +80,13 @@ interface LibraryEntry {
   date: string;
   chapters: PodcastChapter[];
   showNotes: string;
+  glossary?: GlossaryTerm[];
   language: PodcastLanguage;
   duration: number;
+  metadata?: {
+    keywords: string[];
+    topics: string[];
+  };
 }
 
 declare global {
@@ -98,22 +110,32 @@ export default function App() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [chapters, setChapters] = useState<PodcastChapter[]>([]);
   const [showNotes, setShowNotes] = useState<string>('');
+  const [glossary, setGlossary] = useState<GlossaryTerm[]>([]);
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
   const [currentPodcast, setCurrentPodcast] = useState<{
     title: string;
     summary: string;
     chapters: PodcastChapter[];
     showNotes: string;
+    glossary?: GlossaryTerm[];
     script: PodcastSegment[];
     language: PodcastLanguage;
+    metadata?: {
+      keywords: string[];
+      topics: string[];
+    };
   } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [aiSearchResults, setAiSearchResults] = useState<string[] | null>(null);
   const [languageFilter, setLanguageFilter] = useState<string>('all');
   const [dateRangeFilter, setDateRangeFilter] = useState<string>('all');
   const [keywordFilter, setKeywordFilter] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [isLinkCopied, setIsLinkCopied] = useState(false);
+  const [shareWithTimestamp, setShareWithTimestamp] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -122,6 +144,9 @@ export default function App() {
   const [hasCustomKey, setHasCustomKey] = useState(false);
   const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
   const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
+  const [feedbackGiven, setFeedbackGiven] = useState<boolean>(false);
+  const [currentEpisodeId, setCurrentEpisodeId] = useState<string | null>(null);
+  const [isRadioMode, setIsRadioMode] = useState<boolean>(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sampleAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -243,45 +268,50 @@ export default function App() {
 
       setCurrentStep(3);
       setStatus(`Synthesizing ${selectedLanguage} voices...`);
-      const generatedAudio = await generatePodcastAudio(generatedScript, selectedLanguage);
+      const generatedAudioBlob = await generatePodcastAudio(generatedScript, selectedLanguage);
       
-      if (generatedAudio) {
+      if (generatedAudioBlob) {
         setCurrentStep(4);
-        setAudioUrl(generatedAudio);
-        setStatus('Generating summary, chapters, and show notes...');
+        const generatedAudioUrl = URL.createObjectURL(generatedAudioBlob);
+        setAudioUrl(generatedAudioUrl);
+        setStatus('Generating summary, chapters, show notes, and glossary...');
         
-        const [summary, generatedChapters] = await Promise.all([
+        const [summary, generatedChapters, metadata, generatedGlossary] = await Promise.all([
           generatePodcastSummary(generatedScript, selectedLanguage),
-          generatePodcastChapters(generatedScript, selectedLanguage)
+          generatePodcastChapters(generatedScript, selectedLanguage),
+          generateMetadata(generatedScript, selectedLanguage),
+          generateGlossary(generatedScript, selectedLanguage)
         ]);
         
         const generatedShowNotes = await generateShowNotes(generatedScript, generatedChapters, selectedLanguage);
         
         setChapters(generatedChapters);
         setShowNotes(generatedShowNotes);
+        setGlossary(generatedGlossary);
         setCurrentPodcast({
           title: title,
           summary: summary,
           chapters: generatedChapters,
           showNotes: generatedShowNotes,
+          glossary: generatedGlossary,
           script: generatedScript,
-          language: selectedLanguage
+          language: selectedLanguage,
+          metadata: metadata
         });
         
         const entryId = Date.now().toString();
 
         // Save to IndexedDB for persistence
-        const audioBlob = await fetch(generatedAudio).then(r => r.blob());
         const pdfBlob = file ? file : new Blob([text], { type: 'text/plain' });
         
         const audioContext = new AudioContext();
-        const audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
+        const audioBuffer = await audioContext.decodeAudioData(await generatedAudioBlob.arrayBuffer());
         const duration = audioBuffer.duration;
 
         await saveMedia({
           id: entryId,
           pdfBlob: pdfBlob,
-          audioBlob: audioBlob,
+          audioBlob: generatedAudioBlob,
           script: generatedScript
         });
 
@@ -292,8 +322,10 @@ export default function App() {
           date: new Date().toLocaleDateString(),
           chapters: generatedChapters,
           showNotes: generatedShowNotes,
+          glossary: generatedGlossary,
           language: selectedLanguage,
-          duration: duration
+          duration: duration,
+          metadata: metadata
         };
         
         setLibrary(prev => [newEntry, ...prev]);
@@ -338,16 +370,25 @@ export default function App() {
         setShowNotes(entry.showNotes);
         setSelectedLanguage(entry.language || 'English');
         setFile(new File([media.pdfBlob], entry.title + ".pdf", { type: 'application/pdf' }));
+        setCurrentEpisodeId(entry.id);
         setCurrentPodcast({
           title: entry.title,
           summary: entry.description,
           chapters: entry.chapters,
           showNotes: entry.showNotes,
           script: media.script,
-          language: entry.language
+          language: entry.language,
+          metadata: entry.metadata
         });
         
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        
+        // Auto-play when loading from library
+        setTimeout(() => {
+          if (audioRef.current) {
+            audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
+          }
+        }, 500);
       } else {
         setError('Could not find the media files for this entry.');
       }
@@ -385,11 +426,35 @@ export default function App() {
       chapters: currentPodcast.chapters,
       showNotes: currentPodcast.showNotes,
       language: currentPodcast.language,
-      duration: duration
+      duration: duration,
+      metadata: currentPodcast.metadata
     };
     
     setLibrary(prev => [newEntry, ...prev]);
     setStatus('Podcast saved to library!');
+  };
+
+  const playNextEpisode = () => {
+    if (library.length === 0) return;
+    
+    let nextIndex = 0;
+    if (currentEpisodeId) {
+      const currentIndex = library.findIndex(e => e.id === currentEpisodeId);
+      if (currentIndex !== -1 && currentIndex < library.length - 1) {
+        nextIndex = currentIndex + 1;
+      }
+    }
+    
+    loadFromLibrary(library[nextIndex]);
+  };
+
+  const startLiveRadio = () => {
+    if (library.length > 0) {
+      setIsRadioMode(true);
+      loadFromLibrary(library[0]);
+    } else {
+      alert("No episodes in the library yet. Generate a podcast first!");
+    }
   };
 
   const deleteFromLibrary = async (id: string) => {
@@ -399,11 +464,45 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setAiSearchResults(null);
+      setIsSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await aiSearchPodcasts(
+          searchQuery,
+          library.map(p => ({ id: p.id, title: p.title, description: p.description }))
+        );
+        setAiSearchResults(results);
+      } catch (error) {
+        console.error("AI Search failed:", error);
+        setAiSearchResults(null);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, library]);
+
   const filteredLibrary = library.filter(entry => {
-    const matchesSearch = entry.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          entry.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = aiSearchResults 
+      ? aiSearchResults.includes(entry.id)
+      : (entry.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+         entry.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+         entry.metadata?.keywords.some(k => k.toLowerCase().includes(searchQuery.toLowerCase())) ||
+         entry.metadata?.topics.some(t => t.toLowerCase().includes(searchQuery.toLowerCase())));
+         
     const matchesLanguage = languageFilter === 'all' || entry.language === languageFilter;
-    const matchesKeyword = keywordFilter === '' || entry.description.toLowerCase().includes(keywordFilter.toLowerCase());
+    const matchesKeyword = keywordFilter === '' || 
+      entry.description.toLowerCase().includes(keywordFilter.toLowerCase()) ||
+      entry.metadata?.keywords.some(k => k.toLowerCase().includes(keywordFilter.toLowerCase())) ||
+      entry.metadata?.topics.some(t => t.toLowerCase().includes(keywordFilter.toLowerCase()));
     
     let matchesDate = true;
     if (dateRangeFilter !== 'all') {
@@ -441,6 +540,20 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (audioUrl && audioRef.current) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const t = urlParams.get('t');
+      if (t) {
+        const time = parseInt(t, 10);
+        if (!isNaN(time)) {
+          audioRef.current.currentTime = time;
+          setCurrentTime(time);
+        }
+      }
+    }
+  }, [audioUrl]);
+
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = Number(e.target.value);
     if (audioRef.current) {
@@ -458,6 +571,13 @@ export default function App() {
     if (audioRef.current) {
       audioRef.current.playbackRate = nextSpeed;
     }
+  };
+
+  const handleFeedback = (isPositive: boolean) => {
+    // In a real app, this would send an API request to log the feedback
+    console.log(`Feedback received: ${isPositive ? 'Positive' : 'Negative'}`);
+    setFeedbackGiven(true);
+    setTimeout(() => setFeedbackGiven(false), 3000);
   };
 
   const formatTime = (time: number) => {
@@ -480,32 +600,34 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const sharePodcast = async () => {
-    const shareData = {
-      title: 'Harvest Unpacked DeepDive AI Podcasts',
-      text: `Check out this agricultural DeepDive on "${file?.name || 'an article'}"!`,
-      url: window.location.href,
-    };
+  const copyEmbedCode = async () => {
+    const embedCode = `<iframe src="${window.location.origin}" width="100%" height="800" style="border:none; border-radius: 24px;" allow="microphone; camera; display-capture; autoplay"></iframe>`;
+    try {
+      await navigator.clipboard.writeText(embedCode);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy embed code:', err);
+    }
+  };
 
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch (err: any) {
-        if (err.name !== 'AbortError') {
-          console.error('Error sharing:', err);
-        } else {
-          console.warn('Share canceled by user');
-        }
-      }
+  const getShareUrl = () => {
+    const url = new URL(window.location.href);
+    if (shareWithTimestamp) {
+      url.searchParams.set('t', Math.floor(currentTime).toString());
     } else {
-      // Fallback: Copy to clipboard
-      try {
-        await navigator.clipboard.writeText(window.location.href);
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2000);
-      } catch (err) {
-        console.error('Failed to copy link:', err);
-      }
+      url.searchParams.delete('t');
+    }
+    return url.toString();
+  };
+
+  const copyDirectLink = async () => {
+    try {
+      await navigator.clipboard.writeText(getShareUrl());
+      setIsLinkCopied(true);
+      setTimeout(() => setIsLinkCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy direct link:', err);
     }
   };
 
@@ -543,9 +665,8 @@ export default function App() {
     setLoadingSampleId(charId);
     
     try {
-      const audioData = await generateSampleAudio(charId, samplePhrase, selectedLanguage);
-      if (audioData) {
-        const audioBlob = await fetch(audioData).then(r => r.blob());
+      const audioBlob = await generateSampleAudio(charId, samplePhrase, selectedLanguage);
+      if (audioBlob) {
         const url = URL.createObjectURL(audioBlob);
         
         const audio = new Audio(url);
@@ -569,29 +690,40 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#f5f5f0] text-[#1a1a1a] font-serif selection:bg-[#5A5A40] selection:text-white">
       {/* Header */}
-      <header className="border-b border-[#1a1a1a]/10 bg-white/50 backdrop-blur-md sticky top-0 z-10">
+      <header className="border-b border-white/10 bg-[#1a1a1a] text-white sticky top-0 z-20 shadow-2xl">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#5A5A40] rounded-full flex items-center justify-center text-white">
-              <Sprout size={24} />
+          <div className="flex items-center gap-4">
+            <div className="relative w-12 h-12 bg-[#5A5A40] rounded-full flex items-center justify-center text-white shadow-[0_0_15px_rgba(90,90,64,0.5)]">
+              <Mic2 size={24} />
+              <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-pulse border-2 border-[#1a1a1a]"></div>
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">Harvest Unpacked</h1>
-              <p className="text-[10px] uppercase tracking-[0.2em] font-sans font-semibold text-[#5A5A40]">DeepDive AI Podcasts</p>
+              <h1 className="text-2xl font-bold tracking-tight font-sans">HARVEST UNPACKED <span className="font-light text-[#a3a380]">RADIO</span></h1>
+              <p className="text-[10px] uppercase tracking-[0.3em] font-sans font-semibold text-white/50 flex items-center gap-2 mt-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                Broadcasting Agricultural Insights
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-6 text-sm font-sans font-medium opacity-60">
-              <span>Magazine</span>
-              <span>Insights</span>
-              <span>Community</span>
+            <div className="hidden sm:flex items-center gap-6 text-sm font-sans font-medium text-white/70">
+              <a href="#episodes" className="hover:text-white cursor-pointer transition-colors">Episodes</a>
+              <span className="hover:text-white cursor-pointer transition-colors">Hosts</span>
+              <span className="hover:text-white cursor-pointer transition-colors">Magazine</span>
             </div>
             <button 
-              onClick={sharePodcast}
-              className="flex items-center gap-2 px-4 py-2 bg-[#5A5A40] text-white rounded-full text-xs font-sans font-bold hover:bg-[#4a4a35] transition-all shadow-sm"
+              onClick={startLiveRadio}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-sans font-bold transition-all shadow-lg ${isRadioMode ? 'bg-red-500 text-white hover:bg-red-600 shadow-red-500/20' : 'bg-[#5A5A40] text-white hover:bg-[#4a4a35] hover:shadow-[#5A5A40]/20'}`}
             >
-              {isCopied ? <Check size={14} /> : <Share2 size={14} />}
-              {isCopied ? 'Link Copied' : 'Share App'}
+              <Mic2 size={14} className={isRadioMode ? "animate-pulse" : ""} />
+              {isRadioMode ? 'ON AIR' : 'Listen Live'}
+            </button>
+            <button 
+              onClick={copyEmbedCode}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white/10 text-white rounded-full text-xs font-sans font-bold hover:bg-white/20 transition-all shadow-lg hidden sm:flex"
+            >
+              {isCopied ? <Check size={14} /> : <Code size={14} />}
+              {isCopied ? 'Embed Copied' : 'Embed Radio'}
             </button>
           </div>
         </div>
@@ -608,10 +740,10 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 className="text-5xl sm:text-7xl font-light leading-[0.9] tracking-tight mb-8"
               >
-                Turn your <span className="italic">content</span> into <span className="text-[#5A5A40]">conversations.</span>
+                Turn your <span className="italic">content</span> into <span className="text-[#5A5A40] font-bold">radio.</span>
               </motion.h2>
               <p className="text-xl text-[#1a1a1a]/60 max-w-xl leading-relaxed">
-                Upload PDFs, images, Word docs, or paste text to let our team of experts break down agricultural insights in a 6-8 minute deep dive.
+                Upload PDFs, images, Word docs, or paste text to let our team of experts broadcast agricultural insights in a 6-8 minute deep dive.
               </p>
             </section>
 
@@ -892,7 +1024,28 @@ export default function App() {
                   <div className="flex flex-col sm:flex-row items-center gap-8">
                     <div className="w-32 h-32 bg-gradient-to-br from-[#5A5A40] to-[#3a3a2a] rounded-2xl flex items-center justify-center shadow-inner relative overflow-hidden group">
                       <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-                      <Volume2 size={48} className="relative z-10" />
+                      {isPlaying ? (
+                        <div className="flex items-end gap-1 h-12 relative z-10">
+                          {[...Array(5)].map((_, i) => (
+                            <motion.div
+                              key={i}
+                              className="w-2 bg-white rounded-t-sm"
+                              animate={{
+                                height: ["20%", "100%", "40%", "80%", "30%"]
+                              }}
+                              transition={{
+                                duration: 0.8,
+                                repeat: Infinity,
+                                repeatType: "mirror",
+                                ease: "easeInOut",
+                                delay: i * 0.1
+                              }}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <Volume2 size={48} className="relative z-10" />
+                      )}
                     </div>
                     <div className="flex-1 space-y-4 text-center sm:text-left w-full">
                       <div className="flex justify-between items-start">
@@ -909,8 +1062,8 @@ export default function App() {
                         </button>
                       </div>
 
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-center sm:justify-start gap-4">
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
                           <button 
                             onClick={togglePlayback}
                             className="w-14 h-14 bg-white text-black rounded-full flex items-center justify-center hover:scale-105 transition-transform shrink-0"
@@ -921,44 +1074,62 @@ export default function App() {
                           <a 
                             href={audioUrl} 
                             download={`HarvestUnpacked_DeepDive_${file?.name.replace('.pdf', '') || 'Podcast'}.wav`}
-                            className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-sans font-bold transition-all border border-white/20 hover:border-white/40"
+                            className="flex items-center gap-2 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-sans font-bold transition-all border border-white/20 hover:border-white/40"
                             title="Download Podcast"
                           >
                             <Download size={18} />
-                            <span>Download</span>
+                            <span className="hidden sm:inline">Download</span>
                           </a>
 
                           <button 
                             onClick={saveToLibrary}
-                            className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-sans font-bold transition-all border border-white/20 hover:border-white/40"
+                            className="flex items-center gap-2 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-sans font-bold transition-all border border-white/20 hover:border-white/40"
                             title="Save to Library"
                           >
                             <Save size={18} />
-                            <span>Save</span>
+                            <span className="hidden sm:inline">Save</span>
                           </button>
 
-                          <div className="flex items-center gap-2">
-                             <a href={`https://twitter.com/intent/tweet?text=Check out this DeepDive: ${currentPodcast?.title || 'Podcast'}&url=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Share on Twitter">
-                               <Twitter size={18} />
-                             </a>
-                             <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Share on Facebook">
-                               <Facebook size={18} />
-                             </a>
-                             <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Share on LinkedIn">
-                               <Linkedin size={18} />
-                             </a>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-2">
+                               <a href={`https://twitter.com/intent/tweet?text=Check out this DeepDive: ${currentPodcast?.title || 'Podcast'}&url=${encodeURIComponent(getShareUrl())}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Share on Twitter">
+                                 <Twitter size={18} />
+                               </a>
+                               <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(getShareUrl())}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Share on Facebook">
+                                 <Facebook size={18} />
+                               </a>
+                               <a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(getShareUrl())}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Share on LinkedIn">
+                                 <Linkedin size={18} />
+                               </a>
+                               <a href={`https://api.whatsapp.com/send?text=${encodeURIComponent('Check out this DeepDive: ' + (currentPodcast?.title || 'Podcast') + ' ' + getShareUrl())}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Share on WhatsApp">
+                                 <MessageCircle size={18} />
+                               </a>
+                               <button onClick={copyDirectLink} className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/20 hover:border-white/40" title="Copy Direct Link">
+                                 {isLinkCopied ? <Check size={18} /> : <LinkIcon size={18} />}
+                               </button>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs font-sans text-white/60 cursor-pointer hover:text-white transition-colors w-fit">
+                              <input 
+                                type="checkbox" 
+                                checked={shareWithTimestamp} 
+                                onChange={(e) => setShareWithTimestamp(e.target.checked)}
+                                className="rounded bg-white/10 border-white/20 text-[#5A5A40] focus:ring-[#5A5A40] focus:ring-offset-0 focus:ring-offset-transparent"
+                              />
+                              Share at {formatTime(currentTime)}
+                            </label>
                           </div>
 
                           <button 
-                            onClick={sharePodcast}
-                            className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-sans font-bold transition-all border border-white/20 hover:border-white/40"
-                            title="Share Podcast"
+                            onClick={copyEmbedCode}
+                            className="flex items-center gap-2 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-sans font-bold transition-all border border-white/20 hover:border-white/40"
+                            title="Embed Radio"
                           >
-                            {isCopied ? <Check size={18} /> : <Share2 size={18} />}
-                            <span>{isCopied ? 'Copied' : 'Share'}</span>
+                            {isCopied ? <Check size={18} /> : <Code size={18} />}
+                            <span className="hidden sm:inline">{isCopied ? 'Copied' : 'Embed'}</span>
                           </button>
+                        </div>
 
-                          <div className="flex-1 space-y-1">
+                          <div className="flex-1 space-y-1 w-full mt-4 sm:mt-0">
                             <input 
                               type="range" 
                               min="0" 
@@ -973,6 +1144,25 @@ export default function App() {
                             </div>
                           </div>
                         </div>
+                      
+                      <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-4">
+                        <span className="text-xs font-sans text-white/60">How was this episode?</span>
+                        <div className="flex items-center gap-2">
+                          {feedbackGiven ? (
+                            <span className="text-xs font-sans text-emerald-400 flex items-center gap-1">
+                              <Check size={12} /> Thanks for your feedback!
+                            </span>
+                          ) : (
+                            <>
+                              <button onClick={() => handleFeedback(true)} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-sans transition-colors flex items-center gap-1">
+                                👍 Good
+                              </button>
+                              <button onClick={() => handleFeedback(false)} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-sans transition-colors flex items-center gap-1">
+                                👎 Needs Work
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -981,7 +1171,12 @@ export default function App() {
                     src={audioUrl} 
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={handleLoadedMetadata}
-                    onEnded={() => setIsPlaying(false)}
+                    onEnded={() => {
+                      setIsPlaying(false);
+                      if (isRadioMode) {
+                        playNextEpisode();
+                      }
+                    }}
                     className="hidden"
                   />
                 </motion.section>
@@ -1039,6 +1234,29 @@ export default function App() {
             </AnimatePresence>
 
             <AnimatePresence>
+              {glossary && glossary.length > 0 && !isProcessing && (
+                <motion.section
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white rounded-[32px] p-8 border border-[#1a1a1a]/5"
+                >
+                  <h3 className="text-2xl font-bold flex items-center gap-2 mb-6">
+                    <Sprout size={24} className="text-[#5A5A40]" />
+                    Agricultural Glossary
+                  </h3>
+                  <div className="grid gap-4">
+                    {glossary.map((item, idx) => (
+                      <div key={idx} className="p-4 rounded-2xl bg-[#f5f5f0] border border-[#1a1a1a]/5">
+                        <h4 className="font-bold text-[#1a1a1a] mb-1">{item.term}</h4>
+                        <p className="text-sm text-[#1a1a1a]/80 leading-relaxed">{item.definition}</p>
+                      </div>
+                    ))}
+                  </div>
+                </motion.section>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
               {chapters.length > 0 && !isProcessing && (
                 <motion.section
                   initial={{ opacity: 0, y: 20 }}
@@ -1079,7 +1297,7 @@ export default function App() {
                 <CharacterCard 
                   name="Thabo" 
                   role="Senior Agronomist" 
-                  desc="The high-energy tech enthusiast. Loves innovation, data, and a good laugh."
+                  desc="The high-energy tech enthusiast. Loves innovation, data, and naturally uses local slang like 'lekker' and 'howzit'."
                   icon={<Tractor size={16} />}
                   avatarUrl="https://picsum.photos/seed/thabo/100/100"
                   samplePhrase="Lekker man! I've been looking at the latest data and it's looking very promising for our farmers."
@@ -1092,7 +1310,7 @@ export default function App() {
                 <CharacterCard 
                   name="Lindiwe" 
                   role="Livestock Specialist" 
-                  desc="Practical and witty. Brings the real-world farm stories to life."
+                  desc="Practical and witty. Brings real-world farm stories to life using slang like 'yoh', 'shame', and 'now-now'."
                   icon={<Sprout size={16} />}
                   avatarUrl="https://picsum.photos/seed/lindiwe/100/100"
                   samplePhrase="Howzit! Let's get our hands dirty and see what's really happening on the ground."
@@ -1100,58 +1318,6 @@ export default function App() {
                   pronunciationGuide={[
                     { term: "Bovine", phonetic: "BOH-vahyn" },
                     { term: "Veterinary", phonetic: "VET-er-uh-ner-ee" }
-                  ]}
-                />
-                <CharacterCard 
-                  name="Dr. Thandi" 
-                  role="Soil Scientist" 
-                  desc="Dry, sarcastic wit. Sharp as a cracked earth pan."
-                  icon={<FlaskConical size={16} />}
-                  avatarUrl="https://picsum.photos/seed/thandi/100/100"
-                  samplePhrase="Your soil pH is 6.2? Congrats, you've invented acidic soup."
-                  selectedLanguage={selectedLanguage}
-                  pronunciationGuide={[
-                    { term: "Pedology", phonetic: "pi-DOL-uh-jee" },
-                    { term: "Nitrogen", phonetic: "NAY-truh-juhn" }
-                  ]}
-                />
-                <CharacterCard 
-                  name="JP BoerBot" 
-                  role="Farmer-Bot" 
-                  desc="Cheeky Boer humor. Speaks a mix of English and Afrikaans with a heavy accent."
-                  icon={<Cpu size={16} />}
-                  avatarUrl="https://picsum.photos/seed/jp/100/100"
-                  samplePhrase="Luister hier boet, this drone spots weeds faster than my ex spotting a bargain at Pick n Pay! Dis 'n feit!"
-                  selectedLanguage={selectedLanguage}
-                  pronunciationGuide={[
-                    { term: "Boer", phonetic: "boor" },
-                    { term: "Veld", phonetic: "felt" }
-                  ]}
-                />
-                <CharacterCard 
-                  name="Gogo Nomsa" 
-                  role="Rural Development Specialist" 
-                  desc="Wise, maternal figure. Focuses on community, tradition, and sustainable small-scale farming."
-                  icon={<Heart size={16} />}
-                  avatarUrl="https://picsum.photos/seed/nomsa/100/100"
-                  samplePhrase="Mntanami, we must look after the soil as our ancestors did. It is our legacy."
-                  selectedLanguage={selectedLanguage}
-                  pronunciationGuide={[
-                    { term: "Ubuntu", phonetic: "oo-BOON-too" },
-                    { term: "Imbizo", phonetic: "im-BEE-zoh" }
-                  ]}
-                />
-                <CharacterCard 
-                  name="Prof. Dewald" 
-                  role="Climate Change Expert" 
-                  desc="Meticulous academic. Passionate about green tech and climate resilience."
-                  icon={<Thermometer size={16} />}
-                  avatarUrl="https://picsum.photos/seed/dewald/100/100"
-                  samplePhrase="The data is clear: we are approaching a tipping point. We must adapt our irrigation strategies now."
-                  selectedLanguage={selectedLanguage}
-                  pronunciationGuide={[
-                    { term: "Meteorology", phonetic: "mee-tee-uh-ROL-uh-jee" },
-                    { term: "Sustainability", phonetic: "suh-stey-nuh-BIL-i-tee" }
                   ]}
                 />
               </div>
@@ -1179,12 +1345,15 @@ export default function App() {
               </ul>
             </div>
 
-            <div className="bg-white rounded-[32px] p-8 border border-[#1a1a1a]/5 space-y-6">
+            <div id="episodes" className="bg-white rounded-[32px] p-8 border border-[#1a1a1a]/5 space-y-6">
               <div className="flex flex-col gap-4">
-                <h3 className="text-2xl font-bold flex items-center gap-2">
-                  <FileText size={24} className="text-[#5A5A40]" />
-                  Library
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-2xl font-bold flex items-center gap-2">
+                    <FileText size={24} className="text-[#5A5A40]" />
+                    Episodes
+                  </h3>
+                  <span className="text-xs font-sans font-bold text-[#1a1a1a]/40 uppercase tracking-widest">{library.length} Available</span>
+                </div>
                 {library.length > 0 && (
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1a1a1a]/40" size={16} />
@@ -1258,10 +1427,10 @@ export default function App() {
                         <div className="flex items-center gap-2">
                           <button 
                             onClick={() => loadFromLibrary(entry)}
-                            className="p-2 rounded-full hover:bg-white text-[#5A5A40] transition-all shadow-sm opacity-0 group-hover:opacity-100"
-                            title="Open Podcast"
+                            className={`p-2 rounded-full transition-all shadow-sm ${currentEpisodeId === entry.id ? 'bg-[#5A5A40] text-white' : 'hover:bg-white text-[#5A5A40] opacity-0 group-hover:opacity-100'}`}
+                            title={currentEpisodeId === entry.id ? "Now Playing" : "Play Episode"}
                           >
-                            <Eye size={16} />
+                            {currentEpisodeId === entry.id && isPlaying ? <Pause size={16} /> : <Play size={16} className={currentEpisodeId === entry.id ? "" : "ml-0.5"} />}
                           </button>
                           <button 
                             onClick={() => deleteFromLibrary(entry.id)}
@@ -1275,6 +1444,20 @@ export default function App() {
                       <p className="text-sm text-[#1a1a1a]/60 line-clamp-2 mb-4 italic leading-relaxed">
                         {entry.description}
                       </p>
+                      {entry.metadata && (
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {entry.metadata.keywords.slice(0, 3).map((keyword, idx) => (
+                            <span key={idx} className="px-2 py-1 bg-[#5A5A40]/10 text-[#5A5A40] rounded-md text-[10px] font-sans font-bold uppercase tracking-wider">
+                              {keyword}
+                            </span>
+                          ))}
+                          {entry.metadata.keywords.length > 3 && (
+                            <span className="px-2 py-1 bg-[#1a1a1a]/5 text-[#1a1a1a]/40 rounded-md text-[10px] font-sans font-bold uppercase tracking-wider">
+                              +{entry.metadata.keywords.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <button 
                         onClick={() => loadFromLibrary(entry)}
                         className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#5A5A40] hover:underline flex items-center gap-1"
@@ -1321,11 +1504,11 @@ export default function App() {
                   </a>
                 )}
                 <button 
-                  onClick={sharePodcast}
+                  onClick={copyEmbedCode}
                   className="flex items-center gap-2 px-4 py-2 bg-[#5A5A40] text-white rounded-full text-sm font-sans font-medium hover:bg-[#4a4a35] transition-colors shadow-sm"
                 >
-                  {isCopied ? <Check size={16} /> : <Share2 size={16} />}
-                  {isCopied ? 'Link Copied' : 'Share App'}
+                  {isCopied ? <Check size={16} /> : <Code size={16} />}
+                  {isCopied ? 'Embed Copied' : 'Embed Radio'}
                 </button>
               </div>
             </div>
@@ -1334,10 +1517,7 @@ export default function App() {
                 <div key={i} className="flex gap-6 items-start group">
                   <span className={cn(
                     "w-24 shrink-0 font-sans font-bold text-xs uppercase tracking-widest mt-1.5",
-                    segment.speaker === 'Thabo' ? 'text-blue-600' : 
-                    segment.speaker === 'Lindiwe' ? 'text-emerald-600' : 
-                    segment.speaker === 'Dr. Thandi' ? 'text-purple-600' : 
-                    segment.speaker === 'JP BoerBot' ? 'text-orange-600' : 'text-amber-600'
+                    segment.speaker === 'Thabo' ? 'text-blue-600' : 'text-emerald-600'
                   )}>
                     {segment.speaker}
                   </span>
@@ -1385,8 +1565,9 @@ function CharacterCard({ name, role, desc, icon, avatarUrl, samplePhrase, select
 
     setIsLoading(true);
     try {
-      const audioUrl = await generateSampleAudio(name as any, samplePhrase, selectedLanguage);
-      if (audioUrl) {
+      const audioBlob = await generateSampleAudio(name as any, samplePhrase, selectedLanguage);
+      if (audioBlob) {
+        const audioUrl = URL.createObjectURL(audioBlob);
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
         audio.onended = () => setIsPlaying(false);
