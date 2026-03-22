@@ -34,7 +34,12 @@ export const extractTextFromFile = async (file: File): Promise<ExtractionResult>
     return { text: result.value, title };
   }
 
-  throw new Error(`Unsupported file type: ${mimeType}. Please upload a PDF, image, or Word document.`);
+  if (mimeType.startsWith('text/')) {
+    const text = await file.text();
+    return { text, title };
+  }
+
+  throw new Error(`Unsupported file type: \${mimeType}. Please upload a PDF, image, Word, or text document.`);
 };
 
 const fileToBase64 = (file: File): Promise<string> => {

@@ -170,9 +170,10 @@ export default function App() {
     const isPdf = mimeType === 'application/pdf';
     const isImage = mimeType.startsWith('image/');
     const isWord = mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || mimeType === 'application/msword';
+    const isText = mimeType.startsWith('text/');
 
-    if (!isPdf && !isImage && !isWord) {
-      setError('Unsupported file type. Please upload a PDF, Image, or Word document.');
+    if (!isPdf && !isImage && !isWord && !isText) {
+      setError('Unsupported file type. Please upload a PDF, Image, Word, or Text document.');
       setFile(null);
       return;
     }
@@ -603,7 +604,7 @@ export default function App() {
                   >
                     <input 
                       type="file" 
-                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" 
+                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.txt" 
                       onChange={handleFileChange} 
                       className="hidden" 
                       id="file-upload"
@@ -614,7 +615,7 @@ export default function App() {
                       </div>
                       <div>
                         <p className="text-lg font-medium">{file ? file.name : 'Choose a file'}</p>
-                        <p className="text-sm text-[#1a1a1a]/40 font-sans">PDF, Image, or Word (Max 10MB)</p>
+                        <p className="text-sm text-[#1a1a1a]/40 font-sans">PDF, Image, Word, or Text (Max 10MB)</p>
                       </div>
                     </label>
                   </div>
@@ -723,11 +724,11 @@ export default function App() {
                   >
                     <div className="flex items-center gap-2 mb-4 px-3 py-1.5 bg-[#5A5A40]/10 text-[#5A5A40] rounded-lg w-fit text-[10px] font-bold uppercase tracking-widest">
                       <Clock size={12} />
-                      Concise Generation (3-4 mins)
+                      DeepDive Generation (3-4 mins)
                     </div>
                     {[
                       { id: 1, label: 'Extracting text from content' },
-                      { id: 2, label: 'Generating 2-minute deep dive script' },
+                      { id: 2, label: 'Generating fun & informative deep dive script' },
                       { id: 3, label: 'Synthesizing South African voices (Batch processing)' },
                       { id: 4, label: 'Finalizing long-form podcast' },
                     ].map((step) => (

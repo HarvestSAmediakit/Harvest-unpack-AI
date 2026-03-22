@@ -3,7 +3,7 @@
  * Converts raw PCM data to a WAV data URI.
  * Gemini TTS returns raw PCM (16-bit, 24kHz, mono).
  */
-export const pcmToWav = (base64Pcm: string): string => {
+export const pcmToWav = (base64Pcm: string): Blob => {
   const binaryString = atob(base64Pcm);
   const dataSize = binaryString.length;
   const buffer = new ArrayBuffer(44 + dataSize);
@@ -41,15 +41,14 @@ export const pcmToWav = (base64Pcm: string): string => {
     view.setUint8(44 + i, binaryString.charCodeAt(i));
   }
 
-  const blob = new Blob([buffer], { type: 'audio/wav' });
-  return URL.createObjectURL(blob);
+  return new Blob([buffer], { type: 'audio/wav' });
 };
 
 /**
  * Enhances the audio by applying normalization, high-pass filtering, 
  * and a presence boost to make it sound more like a professional podcast.
  */
-export const enhanceAudio = async (base64Pcm: string): Promise<string> => {
+export const enhanceAudio = async (base64Pcm: string): Promise<Blob> => {
   const binaryString = atob(base64Pcm);
   const dataSize = binaryString.length;
   const sampleCount = dataSize / 2;
@@ -113,7 +112,7 @@ export const enhanceAudio = async (base64Pcm: string): Promise<string> => {
 /**
  * Converts an AudioBuffer to a WAV data URI.
  */
-function audioBufferToWav(buffer: AudioBuffer): string {
+function audioBufferToWav(buffer: AudioBuffer): Blob {
   const length = buffer.length * 2;
   const wavBuffer = new ArrayBuffer(44 + length);
   const view = new DataView(wavBuffer);
@@ -143,8 +142,7 @@ function audioBufferToWav(buffer: AudioBuffer): string {
     offset += 2;
   }
 
-  const blob = new Blob([wavBuffer], { type: 'audio/wav' });
-  return URL.createObjectURL(blob);
+  return new Blob([wavBuffer], { type: 'audio/wav' });
 }
 
 function writeString(view: DataView, offset: number, string: string) {

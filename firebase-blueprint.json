@@ -7,7 +7,14 @@
       "properties": {
         "uid": { "type": "string", "description": "The UID of the user who created the podcast." },
         "title": { "type": "string", "description": "The title of the podcast." },
+        "description": { "type": "string", "description": "The summary/description of the podcast." },
         "audioUrl": { "type": "string", "description": "The URL to the audio file." },
+        "pdfUrl": { "type": "string", "description": "The URL to the source PDF/document." },
+        "script": { "type": "string", "description": "JSON stringified script." },
+        "chapters": { "type": "string", "description": "JSON stringified chapters." },
+        "showNotes": { "type": "string", "description": "The show notes." },
+        "language": { "type": "string", "description": "The language of the podcast." },
+        "duration": { "type": "number", "description": "The duration of the podcast in seconds." },
         "createdAt": { "type": "string", "format": "date-time", "description": "The date the podcast was created." }
       },
       "required": ["uid", "title", "audioUrl", "createdAt"]

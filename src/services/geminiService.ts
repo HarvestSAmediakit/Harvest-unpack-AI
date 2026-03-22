@@ -120,33 +120,35 @@ export const generatePodcastScript = async (
     .join("\n    ");
 
   const systemInstruction = `
-    You are a scriptwriter for "Harvest Unpacked DeepDive AI Podcasts", a popular South African agricultural podcast.
-    Your task is to create a realistic, engaging, and highly educational conversation between EXACTLY the 2 characters provided below.
+    You are a scriptwriter for "Harvest Unpacked DeepDive AI Podcasts", a popular, highly entertaining talkshow podcast for the readership of Harvest SA magazine.
+    Your task is to create a realistic, incredibly fun, engaging, and highly educational deep dive conversation between EXACTLY the 2 characters provided below.
+    The readership of Harvest SA magazine needs to absolutely love this—it should feel like the best talkshow podcast ever!
     
     DO NOT use any other characters. ONLY use:
-    ${selectedCharacters.join(", ")}
+    \${selectedCharacters.join(", ")}
 
-    LANGUAGE: The podcast MUST be generated in ${language}. 
-    - If the language is not English, translate the core concepts and discussion naturally into ${language}.
-    - IMPORTANT: Ensure the output is strictly in ${language}. Do not mix with English unless it's a proper noun or technical term that is commonly used in ${language}.
-    - Characters should still maintain their unique personalities and cultural backgrounds, but speak in ${language}.
-    - Use appropriate local idioms and expressions for ${language}.
+    LANGUAGE: The podcast MUST be generated in \${language}. 
+    - If the language is not English, translate the core concepts and discussion naturally into \${language}.
+    - IMPORTANT: Ensure the output is strictly in \${language}. Do not mix with English unless it's a proper noun or technical term that is commonly used in \${language}.
+    - Characters should still maintain their unique personalities and cultural backgrounds, but speak in \${language}.
+    - Use appropriate local idioms and expressions for \${language}.
 
     Core Objectives:
-    1. Concise Summary: Start the podcast with a very brief (1-2 sentence) overview of what will be discussed in this episode in ${language}.
-    2. Deep Dive Conversation: The 2 chosen characters should have a natural, back-and-forth discussion about the article's contents in ${language}.
-    3. Detailed Explanation: Break down complex agricultural concepts into simple, understandable terms in ${language}.
-    4. Practical Application: Discuss how a farmer can actually use the information from the article in their daily operations.
-    5. Minimal Promotion: Subtly mention Harvest Unpacked.
-    6. Duration: Aim for ~400-500 words to ensure a 2 minute podcast duration.
+    1. Hook the Audience: Start the podcast with a fun, high-energy, and catchy intro that hooks the Harvest SA magazine readership immediately.
+    2. Fun & Informative Deep Dive: The 2 chosen characters should have a natural, highly entertaining, back-and-forth deep dive discussion about the supplied material's contents.
+    3. Detailed & Accessible Explanation: Break down complex agricultural concepts into simple, understandable, and relatable terms.
+    4. Practical Application: Discuss how a farmer can actually use the information from the material in their daily operations, keeping it practical but lively.
+    5. Magazine Shoutout: Enthusiastically mention Harvest SA magazine and the Harvest Unpacked podcast.
+    6. Duration: Aim for ~600-800 words to ensure a substantial, engaging podcast duration.
 
     The Team (Use ONLY these 2):
-    ${characterDetails}
+    \${characterDetails}
 
     Tone:
-    - Authentic and culturally resonant for ${language}.
-    - High energy and educational.
-    - Realistic banter.
+    - Extremely fun, entertaining, and informative.
+    - Authentic and culturally resonant for \${language}.
+    - High energy, like a top-tier radio talkshow.
+    - Realistic, witty banter that Harvest SA readers will love.
 
     Output Format:
     Return a JSON array of objects with "speaker" and "text" fields.
@@ -155,7 +157,7 @@ export const generatePodcastScript = async (
   try {
     const response = await getAi().models.generateContent({
       model,
-      contents: [{ parts: [{ text: `Article Content: ${articleText}\n\nGenerate a concise podcast script (2 minutes) in ${language} with EXACTLY these 2 characters: ${selectedCharacters.join(", ")}.` }] }],
+      contents: [{ parts: [{ text: `Article Content: \${articleText}\n\nGenerate a highly entertaining, fun, and informative deep dive podcast script (~600-800 words) in \${language} with EXACTLY these 2 characters: \${selectedCharacters.join(", ")}.` }] }],
       config: {
         systemInstruction,
         responseMimeType: "application/json",
@@ -179,7 +181,7 @@ export const generatePodcastScript = async (
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: `Article Content: ${articleText}\n\nGenerate a concise podcast script (2 minutes) in ${language} with EXACTLY these 2 characters: ${selectedCharacters.join(", ")}.`,
+            prompt: `Article Content: \${articleText}\n\nGenerate a highly entertaining, fun, and informative deep dive podcast script (~600-800 words) in \${language} with EXACTLY these 2 characters: \${selectedCharacters.join(", ")}.`,
             systemInstruction,
             responseFormat: "json_object"
           })
@@ -215,7 +217,7 @@ export const generatePodcastScript = async (
 
 export const extractTextFromImage = async (base64Data: string, mimeType: string): Promise<string> => {
   const model = "gemini-3-flash-preview";
-  const prompt = "Extract all the text from this image. If it's an article, capture the full content accurately. Return ONLY the extracted text.";
+  const prompt = "Analyze this image in detail. If it contains text or is an article, extract the full content accurately. If it is a photograph or diagram, describe in detail what is shown, including any agricultural context, subjects, conditions, and notable features so it can be discussed in a podcast. Return the extracted text and/or detailed description.";
 
   try {
     const response = await getAi().models.generateContent({
@@ -555,13 +557,13 @@ export const generatePodcastChapters = async (script: PodcastSegment[], language
 
 export const generateShowNotes = async (script: PodcastSegment[], chapters: PodcastChapter[], language: PodcastLanguage = "English"): Promise<string> => {
   const model = "gemini-3-flash-preview";
-  const prompt = `Generate detailed show notes for a podcast episode in ${language} based on the following script and chapters.
+  const prompt = `Generate detailed show notes for a podcast episode in \${language} based on the following script and chapters.
   
   The show notes should include:
-  1. A catchy episode title in ${language}.
-  2. A detailed overview of the discussion in ${language}.
-  3. Key takeaways (bullet points) in ${language}.
-  4. Mention of the Harvest Unpacked experts involved.
+  1. A catchy episode title in \${language}.
+  2. A detailed overview of the discussion in \${language}, highlighting the fun and informative deep dive.
+  3. Key takeaways (bullet points) in \${language}.
+  4. Mention of the Harvest Unpacked experts involved and a shoutout to the Harvest SA magazine readership.
   
   Script:
   ${script.map(s => `${s.speaker}: ${s.text}`).join("\n")}
