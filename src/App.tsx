@@ -145,8 +145,6 @@ export default function App() {
   const [playingSampleId, setPlayingSampleId] = useState<string | null>(null);
   const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
   const [feedbackGiven, setFeedbackGiven] = useState<boolean>(false);
-  const [currentEpisodeId, setCurrentEpisodeId] = useState<string | null>(null);
-  const [isRadioMode, setIsRadioMode] = useState<boolean>(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sampleAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -370,7 +368,6 @@ export default function App() {
         setShowNotes(entry.showNotes);
         setSelectedLanguage(entry.language || 'English');
         setFile(new File([media.pdfBlob], entry.title + ".pdf", { type: 'application/pdf' }));
-        setCurrentEpisodeId(entry.id);
         setCurrentPodcast({
           title: entry.title,
           summary: entry.description,
@@ -382,13 +379,6 @@ export default function App() {
         });
         
         window.scrollTo({ top: 0, behavior: 'smooth' });
-        
-        // Auto-play when loading from library
-        setTimeout(() => {
-          if (audioRef.current) {
-            audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
-          }
-        }, 500);
       } else {
         setError('Could not find the media files for this entry.');
       }
@@ -432,29 +422,6 @@ export default function App() {
     
     setLibrary(prev => [newEntry, ...prev]);
     setStatus('Podcast saved to library!');
-  };
-
-  const playNextEpisode = () => {
-    if (library.length === 0) return;
-    
-    let nextIndex = 0;
-    if (currentEpisodeId) {
-      const currentIndex = library.findIndex(e => e.id === currentEpisodeId);
-      if (currentIndex !== -1 && currentIndex < library.length - 1) {
-        nextIndex = currentIndex + 1;
-      }
-    }
-    
-    loadFromLibrary(library[nextIndex]);
-  };
-
-  const startLiveRadio = () => {
-    if (library.length > 0) {
-      setIsRadioMode(true);
-      loadFromLibrary(library[0]);
-    } else {
-      alert("No episodes in the library yet. Generate a podcast first!");
-    }
   };
 
   const deleteFromLibrary = async (id: string) => {
@@ -707,20 +674,13 @@ export default function App() {
           </div>
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-6 text-sm font-sans font-medium text-white/70">
-              <a href="#episodes" className="hover:text-white cursor-pointer transition-colors">Episodes</a>
+              <span className="hover:text-white cursor-pointer transition-colors">Episodes</span>
               <span className="hover:text-white cursor-pointer transition-colors">Hosts</span>
               <span className="hover:text-white cursor-pointer transition-colors">Magazine</span>
             </div>
             <button 
-              onClick={startLiveRadio}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-sans font-bold transition-all shadow-lg ${isRadioMode ? 'bg-red-500 text-white hover:bg-red-600 shadow-red-500/20' : 'bg-[#5A5A40] text-white hover:bg-[#4a4a35] hover:shadow-[#5A5A40]/20'}`}
-            >
-              <Mic2 size={14} className={isRadioMode ? "animate-pulse" : ""} />
-              {isRadioMode ? 'ON AIR' : 'Listen Live'}
-            </button>
-            <button 
               onClick={copyEmbedCode}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white/10 text-white rounded-full text-xs font-sans font-bold hover:bg-white/20 transition-all shadow-lg hidden sm:flex"
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#5A5A40] text-white rounded-full text-xs font-sans font-bold hover:bg-[#4a4a35] transition-all shadow-lg hover:shadow-[#5A5A40]/20"
             >
               {isCopied ? <Check size={14} /> : <Code size={14} />}
               {isCopied ? 'Embed Copied' : 'Embed Radio'}
@@ -1171,12 +1131,7 @@ export default function App() {
                     src={audioUrl} 
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={handleLoadedMetadata}
-                    onEnded={() => {
-                      setIsPlaying(false);
-                      if (isRadioMode) {
-                        playNextEpisode();
-                      }
-                    }}
+                    onEnded={() => setIsPlaying(false)}
                     className="hidden"
                   />
                 </motion.section>
@@ -1345,15 +1300,12 @@ export default function App() {
               </ul>
             </div>
 
-            <div id="episodes" className="bg-white rounded-[32px] p-8 border border-[#1a1a1a]/5 space-y-6">
+            <div className="bg-white rounded-[32px] p-8 border border-[#1a1a1a]/5 space-y-6">
               <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-2xl font-bold flex items-center gap-2">
-                    <FileText size={24} className="text-[#5A5A40]" />
-                    Episodes
-                  </h3>
-                  <span className="text-xs font-sans font-bold text-[#1a1a1a]/40 uppercase tracking-widest">{library.length} Available</span>
-                </div>
+                <h3 className="text-2xl font-bold flex items-center gap-2">
+                  <FileText size={24} className="text-[#5A5A40]" />
+                  Library
+                </h3>
                 {library.length > 0 && (
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1a1a1a]/40" size={16} />
@@ -1427,10 +1379,10 @@ export default function App() {
                         <div className="flex items-center gap-2">
                           <button 
                             onClick={() => loadFromLibrary(entry)}
-                            className={`p-2 rounded-full transition-all shadow-sm ${currentEpisodeId === entry.id ? 'bg-[#5A5A40] text-white' : 'hover:bg-white text-[#5A5A40] opacity-0 group-hover:opacity-100'}`}
-                            title={currentEpisodeId === entry.id ? "Now Playing" : "Play Episode"}
+                            className="p-2 rounded-full hover:bg-white text-[#5A5A40] transition-all shadow-sm opacity-0 group-hover:opacity-100"
+                            title="Open Podcast"
                           >
-                            {currentEpisodeId === entry.id && isPlaying ? <Pause size={16} /> : <Play size={16} className={currentEpisodeId === entry.id ? "" : "ml-0.5"} />}
+                            <Eye size={16} />
                           </button>
                           <button 
                             onClick={() => deleteFromLibrary(entry.id)}
