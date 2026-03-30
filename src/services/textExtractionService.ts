@@ -1,6 +1,7 @@
 import * as mammoth from 'mammoth';
 import { extractTextFromPdf } from './pdfService';
 import { extractTextFromImage } from './geminiService';
+import { PodcastError } from '../types';
 
 export type InputType = 'pdf' | 'image' | 'word' | 'text';
 
@@ -14,6 +15,36 @@ export const extractTextFromFile = async (file: File): Promise<ExtractionResult>
   const fileName = file.name;
   const title = fileName.replace(/\.[^/.]+$/, ""); // Remove extension
 
+  // Use backend API for extraction as per architecture
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/api/extract-text', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.text && data.text.trim()) {
+        return { text: data.text, title };
+      }
+      throw new PodcastError(
+        "Extraction Failed",
+        "The backend service returned an empty result.",
+        "Please try again or upload a different file.",
+        "BACKEND_EXTRACTION_EMPTY"
+      );
+    } else {
+      console.warn("Backend extraction failed, falling back to client-side extraction");
+    }
+  } catch (err: any) {
+    console.error("Backend extraction error:", err);
+    // Continue to fallback
+  }
+
+  // Fallback to client-side extraction if backend fails or for images (which use Gemini)
   if (mimeType === 'application/pdf') {
     const text = await extractTextFromPdf(file);
     return { text, title };
@@ -29,9 +60,22 @@ export const extractTextFromFile = async (file: File): Promise<ExtractionResult>
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     mimeType === 'application/msword'
   ) {
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return { text: result.value, title };
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      if (!result.value.trim()) {
+        throw new Error("The Word document appears to be empty.");
+      }
+      return { text: result.value, title };
+    } catch (err: any) {
+      console.error("Word Extraction Error:", err);
+      throw new PodcastError(
+        "Word Document Error",
+        err.message || "Failed to extract text from the Word document.",
+        "Try converting the document to a PDF or plain text file and uploading it again.",
+        "WORD_EXTRACTION_FAILED"
+      );
+    }
   }
 
   if (mimeType.startsWith('text/')) {
@@ -39,7 +83,12 @@ export const extractTextFromFile = async (file: File): Promise<ExtractionResult>
     return { text, title };
   }
 
-  throw new Error(`Unsupported file type: \${mimeType}. Please upload a PDF, image, Word, or text document.`);
+  throw new PodcastError(
+    "Unsupported File Type",
+    `The file type \${mimeType} is not supported.`,
+    "Please upload a PDF, Image (PNG/JPG), Word document, or plain text file.",
+    "UNSUPPORTED_FILE_TYPE"
+  );
 };
 
 const fileToBase64 = (file: File): Promise<string> => {
