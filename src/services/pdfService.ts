@@ -8,7 +8,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLi
 export const extractTextFromPdf = async (file: File): Promise<string> => {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdf = await pdfjsLib.getDocument({ 
+      data: arrayBuffer, 
+      disableFontFace: true,
+      verbosity: 0, // Suppress console noise for malformed PDFs
+      cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
+      cMapPacked: true,
+      standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/standard_fonts/`
+    }).promise;
     let fullText = '';
 
     if (pdf.numPages === 0) {
@@ -21,12 +28,20 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
     }
 
     for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ');
-      fullText += pageText + '\n';
+      try {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        
+        // Ensure items exist and are strings
+        const pageText = (textContent.items || [])
+          .map((item: any) => (typeof item.str === 'string' ? item.str : ''))
+          .join(' ');
+          
+        fullText += pageText + '\n';
+      } catch (pageError: any) {
+        console.warn(`Error extracting text from page ${i}:`, pageError);
+        // Continue to next page if one page fails
+      }
     }
 
     if (!fullText.trim()) {

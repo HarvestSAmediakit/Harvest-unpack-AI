@@ -1,0 +1,144 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: podcasts
+    // Document ID: podcastId
+    // Fields:
+    //   - id: string (required) - Unique ID
+    //   - title: string (required, < 200 chars) - Title
+    //   - description: string (optional, < 1000 chars) - Summary
+    //   - date: string (required, ISO 8601) - Creation date
+    //   - duration: number (optional) - Duration in seconds
+    //   - language: string (optional) - Language
+    //   - showNotes: string (optional, < 10000 chars) - Markdown notes
+    //   - chapters: list (optional, < 100 items) - Podcast chapters
+    //   - glossary: list (optional, < 100 items) - Glossary terms
+    //   - driveLink: string (optional, < 500 chars) - Google Drive link
+    //   - audioUrl: string (optional, < 500 chars) - Public URL
+    //   - coverUrl: string (optional, < 500 chars) - Cover image URL
+    //   - embedding: list (optional, < 2048 items) - Vector embedding
+    //   - ownerId: string (required) - UID of creator
+    //   - isPublic: boolean (optional) - Public access flag
+    //
+    // Collection: rssFeeds
+    // Document ID: feedId
+    // Fields:
+    //   - id: string (required) - Feed ID
+    //   - title: string (required, < 200 chars) - Feed title
+    //   - description: string (optional, < 1000 chars) - Feed description
+    //   - link: string (optional, < 500 chars) - Feed link
+    //   - ownerId: string (required) - UID of creator
+    //   - podcastIds: list (optional, < 100 items) - List of podcast IDs
+    //
+    // Collection: users
+    // Document ID: userId
+    // Fields:
+    //   - uid: string (required) - User UID
+    //   - displayName: string (optional, < 100 chars) - Display name
+    //   - email: string (required, < 200 chars) - Email address
+    //   - photoURL: string (optional, < 500 chars) - Photo URL
+    //   - role: string (required, enum: ['user', 'admin']) - User role
+    //   - createdAt: string (required, ISO 8601) - Creation date
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (request.auth.token.email == "damstert1@gmail.com" && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() > 0 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['user', 'admin', 'listener'] &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidPodcast(data) {
+      return data.id is string && data.id.size() > 0 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             (!('description' in data) || (data.description is string && data.description.size() < 1000)) &&
+             isValidDateString(data.date) &&
+             data.ownerId is string && data.ownerId == request.auth.uid &&
+             (!('isPublic' in data) || data.isPublic is bool);
+    }
+
+    function isValidRssFeed(data) {
+      return data.id is string && data.id.size() > 0 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.ownerId is string && data.ownerId == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin(); // Only admins can list users
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /podcasts/{podcastId} {
+      allow get: if resource.data.isPublic == true || (isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin()));
+      allow list: if resource.data.isPublic == true || isAuthenticated(); // Allow public listing if queried appropriately
+      allow create: if isAuthenticated() && isValidPodcast(request.resource.data);
+      allow update: if isAuthenticated() && isOwner(resource.data.ownerId) && isValidPodcast(request.resource.data);
+      allow delete: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin());
+    }
+
+    match /rssFeeds/{feedId} {
+      allow read: if true; // RSS feeds are public by design
+      allow create: if isAuthenticated() && isValidRssFeed(request.resource.data);
+      allow update: if isAuthenticated() && isOwner(resource.data.ownerId) && isValidRssFeed(request.resource.data);
+      allow delete: if isAuthenticated() && (isOwner(resource.data.ownerId) || isAdmin());
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

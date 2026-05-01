@@ -1,5 +1,6 @@
 {
-  "name": "Harvest Unpacked DeepDive AI Podcasts",
-  "description": "Hyper-localised agricultural podcast generator for South Africa, turning research and reports into conversational podcasts with authentic en-ZA accents.",
-  "requestFramePermissions": []
+  "name": "DigiMag Podcasts AI",
+  "description": "An app where you upload PDF articles to create engaging, energetic, and funny podcast DeepDive discussions between three South African agricultural professionals from Harvest SA magazine.",
+  "requestFramePermissions": ["autoplay", "microphone"]
 }
+

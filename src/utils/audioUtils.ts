@@ -1,9 +1,11 @@
 
+import * as lamejs from '@breezystack/lamejs';
+
 /**
  * Converts raw PCM data to a WAV data URI.
  * Gemini TTS returns raw PCM (16-bit, 24kHz, mono).
  */
-export const pcmToWav = (base64Pcm: string): Blob => {
+export const pcmToWav = (base64Pcm: string): string => {
   const binaryString = atob(base64Pcm);
   const dataSize = binaryString.length;
   const buffer = new ArrayBuffer(44 + dataSize);
@@ -41,171 +43,167 @@ export const pcmToWav = (base64Pcm: string): Blob => {
     view.setUint8(44 + i, binaryString.charCodeAt(i));
   }
 
-  return new Blob([buffer], { type: 'audio/wav' });
+  const blob = new Blob([buffer], { type: 'audio/wav' });
+  return URL.createObjectURL(blob);
 };
-
-export interface AudioMarker {
-  title: string;
-  sampleOffset: number;
-}
-
-/**
- * Enhances the audio by applying normalization, high-pass filtering, 
- * and a presence boost to make it sound more like a professional podcast.
- */
-export const enhanceAudio = async (base64Pcm: string, markers?: AudioMarker[]): Promise<Blob> => {
-  const binaryString = atob(base64Pcm);
-  const dataSize = binaryString.length;
-  const sampleCount = dataSize / 2;
-  const sampleRate = 24000;
-
-  // Create an AudioBuffer from the raw PCM
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-  const audioBuffer = audioContext.createBuffer(1, sampleCount, sampleRate);
-  const channelData = audioBuffer.getChannelData(0);
-
-  const view = new DataView(new ArrayBuffer(dataSize));
-  for (let i = 0; i < dataSize; i++) {
-    view.setUint8(i, binaryString.charCodeAt(i));
-  }
-
-  for (let i = 0; i < sampleCount; i++) {
-    // PCM 16-bit is signed, so we use getInt16
-    const sample = view.getInt16(i * 2, true);
-    // Normalize to [-1.0, 1.0]
-    channelData[i] = sample / 32768;
-  }
-
-  // Use OfflineAudioContext for processing
-  const offlineCtx = new OfflineAudioContext(1, sampleCount, sampleRate);
-  const source = offlineCtx.createBufferSource();
-  source.buffer = audioBuffer;
-
-  // 1. High-pass filter (remove low-end rumble)
-  const hpFilter = offlineCtx.createBiquadFilter();
-  hpFilter.type = 'highpass';
-  hpFilter.frequency.value = 80;
-
-  // 2. Presence boost (boost speech clarity)
-  const presenceBoost = offlineCtx.createBiquadFilter();
-  presenceBoost.type = 'peaking';
-  presenceBoost.frequency.value = 3000;
-  presenceBoost.Q.value = 1;
-  presenceBoost.gain.value = 3; // 3dB boost
-
-  // 3. Simple Dynamics Compressor (leveling)
-  const compressor = offlineCtx.createDynamicsCompressor();
-  compressor.threshold.setValueAtTime(-24, offlineCtx.currentTime);
-  compressor.knee.setValueAtTime(30, offlineCtx.currentTime);
-  compressor.ratio.setValueAtTime(12, offlineCtx.currentTime);
-  compressor.attack.setValueAtTime(0.003, offlineCtx.currentTime);
-  compressor.release.setValueAtTime(0.25, offlineCtx.currentTime);
-
-  // Connect nodes
-  source.connect(hpFilter);
-  hpFilter.connect(presenceBoost);
-  presenceBoost.connect(compressor);
-  compressor.connect(offlineCtx.destination);
-
-  source.start(0);
-  const renderedBuffer = await offlineCtx.startRendering();
-
-  // Convert rendered AudioBuffer back to WAV
-  return audioBufferToWav(renderedBuffer, markers);
-};
-
-/**
- * Converts an AudioBuffer to a WAV data URI, optionally with cue/chapter markers.
- */
-function audioBufferToWav(buffer: AudioBuffer, markers?: AudioMarker[]): Blob {
-  const length = buffer.length * 2;
-  
-  let extraSize = 0;
-  let listChunkSize = 4; // "adtl"
-  
-  if (markers && markers.length > 0) {
-    extraSize += 8 + 4 + (24 * markers.length); // cue chunk header + num cue points + cue points
-    
-    for (const marker of markers) {
-      let textLen = marker.title.length + 1; // +1 for null terminator
-      if (textLen % 2 !== 0) textLen += 1; // pad to even
-      listChunkSize += 8 + 4 + textLen; // labl header + cue point ID + text
-    }
-    extraSize += 8 + listChunkSize; // LIST chunk header + listChunkSize
-  }
-
-  const wavBuffer = new ArrayBuffer(44 + length + extraSize);
-  const view = new DataView(wavBuffer);
-  const sampleRate = buffer.sampleRate;
-  let offset = 0;
-
-  // RIFF identifier
-  writeString(view, offset, 'RIFF'); offset += 4;
-  view.setUint32(offset, 36 + length + extraSize, true); offset += 4;
-  writeString(view, offset, 'WAVE'); offset += 4;
-  writeString(view, offset, 'fmt '); offset += 4;
-  view.setUint32(offset, 16, true); offset += 4;
-  view.setUint16(offset, 1, true); offset += 2;
-  view.setUint16(offset, 1, true); offset += 2;
-  view.setUint32(offset, sampleRate, true); offset += 4;
-  view.setUint32(offset, sampleRate * 2, true); offset += 4;
-  view.setUint16(offset, 2, true); offset += 2;
-  view.setUint16(offset, 16, true); offset += 2;
-  writeString(view, offset, 'data'); offset += 4;
-  view.setUint32(offset, length, true); offset += 4;
-
-  const channelData = buffer.getChannelData(0);
-  for (let i = 0; i < channelData.length; i++) {
-    const sample = Math.max(-1, Math.min(1, channelData[i]));
-    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-    offset += 2;
-  }
-
-  if (markers && markers.length > 0) {
-    // cue chunk
-    writeString(view, offset, 'cue '); offset += 4;
-    view.setUint32(offset, 4 + 24 * markers.length, true); offset += 4;
-    view.setUint32(offset, markers.length, true); offset += 4;
-    
-    for (let i = 0; i < markers.length; i++) {
-      const marker = markers[i];
-      view.setUint32(offset, i + 1, true); offset += 4; // ID
-      view.setUint32(offset, marker.sampleOffset, true); offset += 4; // Position
-      writeString(view, offset, 'data'); offset += 4; // Data Chunk ID
-      view.setUint32(offset, 0, true); offset += 4; // Chunk Start
-      view.setUint32(offset, 0, true); offset += 4; // Block Start
-      view.setUint32(offset, marker.sampleOffset, true); offset += 4; // Sample Offset
-    }
-    
-    // LIST chunk
-    writeString(view, offset, 'LIST'); offset += 4;
-    view.setUint32(offset, listChunkSize, true); offset += 4;
-    writeString(view, offset, 'adtl'); offset += 4;
-    
-    for (let i = 0; i < markers.length; i++) {
-      const marker = markers[i];
-      writeString(view, offset, 'labl'); offset += 4;
-      
-      let textLen = marker.title.length + 1;
-      const needsPadding = textLen % 2 !== 0;
-      if (needsPadding) textLen += 1;
-      
-      view.setUint32(offset, 4 + textLen, true); offset += 4; // SubchunkSize
-      view.setUint32(offset, i + 1, true); offset += 4; // Cue Point ID
-      
-      writeString(view, offset, marker.title); offset += marker.title.length;
-      view.setUint8(offset, 0); offset += 1; // null terminator
-      if (needsPadding) {
-        view.setUint8(offset, 0); offset += 1; // padding
-      }
-    }
-  }
-
-  return new Blob([wavBuffer], { type: 'audio/wav' });
-}
 
 function writeString(view: DataView, offset: number, string: string) {
   for (let i = 0; i < string.length; i++) {
     view.setUint8(offset + i, string.charCodeAt(i));
   }
 }
+
+/**
+ * Converts raw PCM data to an MP3 data URI.
+ * Gemini TTS returns raw PCM (16-bit, 24kHz, mono).
+ */
+export const pcmToMp3 = (base64Pcm: string): string => {
+  const binaryString = atob(base64Pcm);
+  const dataSize = binaryString.length;
+  
+  // Create Int16Array from binaryString
+  const samples = new Int16Array(dataSize / 2);
+  for (let i = 0; i < dataSize; i += 2) {
+    const byte1 = binaryString.charCodeAt(i);
+    const byte2 = binaryString.charCodeAt(i + 1);
+    const sample = (byte2 << 8) | byte1;
+    samples[i / 2] = sample >= 0x8000 ? sample - 0x10000 : sample;
+  }
+
+  // Initialize MP3 Encoder: channels, sampleRate, kbps
+  const mp3encoder = new lamejs.Mp3Encoder(1, 24000, 128);
+  const mp3Data: any[] = [];
+
+  const sampleBlockSize = 1152;
+  for (let i = 0; i < samples.length; i += sampleBlockSize) {
+    const sampleChunk = samples.subarray(i, i + sampleBlockSize);
+    const mp3buf = mp3encoder.encodeBuffer(sampleChunk);
+    if (mp3buf.length > 0) {
+      mp3Data.push(mp3buf);
+    }
+  }
+
+  const mp3buf = mp3encoder.flush();
+  if (mp3buf.length > 0) {
+    mp3Data.push(mp3buf);
+  }
+
+  const blob = new Blob(mp3Data, { type: 'audio/mp3' });
+  return URL.createObjectURL(blob);
+};
+
+/**
+ * Converts a base64 string to a Blob URL.
+ */
+export const base64ToBlobUrl = (base64: string, type: string): string => {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], { type });
+  return URL.createObjectURL(blob);
+};
+
+/**
+ * Masters raw PCM audio using Web Audio API (OfflineAudioContext).
+ * Applies EQ, compression, and normalization for a "podcast" sound.
+ */
+export const masterAudio = async (base64Pcm: string, sampleRate = 24000): Promise<string> => {
+  const binaryString = atob(base64Pcm);
+  const len = binaryString.length;
+  const samples = new Int16Array(len / 2);
+  for (let i = 0; i < len; i += 2) {
+    const byte1 = binaryString.charCodeAt(i);
+    const byte2 = binaryString.charCodeAt(i + 1);
+    const sample = (byte2 << 8) | byte1;
+    samples[i / 2] = sample >= 0x8000 ? sample - 0x10000 : sample;
+  }
+
+  // Convert to Float32 for Web Audio
+  const floatSamples = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    floatSamples[i] = samples[i] / 32768;
+  }
+
+  const offlineCtx = new OfflineAudioContext(1, floatSamples.length, sampleRate);
+  const source = offlineCtx.createBufferSource();
+  const buffer = offlineCtx.createBuffer(1, floatSamples.length, sampleRate);
+  buffer.copyToChannel(floatSamples, 0);
+  source.buffer = buffer;
+
+  // 1. High-pass filter (remove rumble)
+  const hp = offlineCtx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 80;
+
+  // 2. EQ: Remove boxiness (250Hz)
+  const eqLow = offlineCtx.createBiquadFilter();
+  eqLow.type = 'peaking';
+  eqLow.frequency.value = 250;
+  eqLow.Q.value = 1;
+  eqLow.gain.value = -3;
+
+  // 3. EQ: Presence (3.5kHz) - slightly higher for clarity
+  const eqMid = offlineCtx.createBiquadFilter();
+  eqMid.type = 'peaking';
+  eqMid.frequency.value = 3500;
+  eqMid.Q.value = 0.8;
+  eqMid.gain.value = 4;
+
+  // 4. EQ: Air (12kHz) - higher for that "premium" feel
+  const eqHigh = offlineCtx.createBiquadFilter();
+  eqHigh.type = 'highshelf';
+  eqHigh.frequency.value = 12000;
+  eqHigh.gain.value = 3;
+
+  // 5. Dynamics Compressor (tighter for radio sound)
+  const compressor = offlineCtx.createDynamicsCompressor();
+  compressor.threshold.value = -20;
+  compressor.knee.value = 10;
+  compressor.ratio.value = 4; // 4:1 is standard for radio voice
+  compressor.attack.value = 0.005;
+  compressor.release.value = 0.1;
+
+  // 6. Soft Limiter (prevent clipping)
+  const limiter = offlineCtx.createDynamicsCompressor();
+  limiter.threshold.value = -1.0;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.001;
+  limiter.release.value = 0.1;
+
+  // 7. Gain (normalization)
+  const gain = offlineCtx.createGain();
+  gain.gain.value = 1.8;
+
+  // Chain
+  source.connect(hp);
+  hp.connect(eqLow);
+  eqLow.connect(eqMid);
+  eqMid.connect(eqHigh);
+  eqHigh.connect(compressor);
+  compressor.connect(limiter);
+  limiter.connect(gain);
+  gain.connect(offlineCtx.destination);
+
+  source.start(0);
+  const renderedBuffer = await offlineCtx.startRendering();
+  const outputData = renderedBuffer.getChannelData(0);
+
+  // Convert back to 16-bit PCM
+  const outputPcm = new Int16Array(outputData.length);
+  for (let i = 0; i < outputData.length; i++) {
+    const s = Math.max(-1, Math.min(1, outputData[i]));
+    outputPcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+
+  // Convert Int16Array to base64 string
+  const uint8 = new Uint8Array(outputPcm.buffer);
+  let binary = '';
+  for (let i = 0; i < uint8.length; i++) {
+    binary += String.fromCharCode(uint8[i]);
+  }
+  return btoa(binary);
+};

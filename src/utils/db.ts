@@ -6,7 +6,7 @@ export interface StoredMedia {
   script: any[];
 }
 
-const DB_NAME = 'HarvestUnpackedDeepDiveDB';
+const DB_NAME = 'DigiMagInsightsDB';
 const STORE_NAME = 'media';
 const DB_VERSION = 1;
 

@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "podcasts": {
+      "title": "Podcast",
+      "description": "An AI-generated podcast entry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique ID of the podcast." },
+        "title": { "type": "string", "description": "Title of the podcast." },
+        "description": { "type": "string", "description": "Short summary or description." },
+        "date": { "type": "string", "format": "date-time", "description": "Creation date." },
+        "duration": { "type": "number", "description": "Duration in seconds." },
+        "language": { "type": "string", "description": "Language of the podcast." },
+        "showNotes": { "type": "string", "description": "Markdown formatted show notes." },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "startTime": { "type": "number" },
+              "endTime": { "type": "number" }
+            }
+          }
+        },
+        "glossary": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "term": { "type": "string" },
+              "definition": { "type": "string" }
+            }
+          }
+        },
+        "driveLink": { "type": "string", "description": "Link to Google Drive file." },
+        "audioUrl": { "type": "string", "description": "Public URL for the audio file (Firebase Storage)." },
+        "coverUrl": { "type": "string", "description": "URL for the cover image." },
+        "embedding": { "type": "array", "items": { "type": "number" }, "description": "Vector embedding for search." },
+        "ownerId": { "type": "string", "description": "UID of the user who created it." },
+        "isPublic": { "type": "boolean", "description": "Whether the podcast is publicly accessible." }
+      },
+      "required": ["id", "title", "date", "ownerId"]
+    },
+    "rssFeeds": {
+      "title": "RSS Feed",
+      "description": "Metadata for a generated RSS feed.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "link": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "podcastIds": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "title", "ownerId"]
+    },
+    "users": {
+      "title": "User Profile",
+      "description": "User-specific settings and profile data.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/podcasts/{podcastId}": {
+      "schema": "podcasts",
+      "description": "Collection of all generated podcasts."
+    },
+    "/rssFeeds/{feedId}": {
+      "schema": "rssFeeds",
+      "description": "Collection of RSS feed metadata."
+    },
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profile documents."
+    }
+  }
+}

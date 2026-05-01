@@ -1,6 +1,5 @@
 import * as mammoth from 'mammoth';
 import { extractTextFromPdf } from './pdfService';
-import { extractTextFromImage } from './geminiService';
 import { PodcastError } from '../types';
 
 export type InputType = 'pdf' | 'image' | 'word' | 'text';
@@ -10,7 +9,7 @@ export interface ExtractionResult {
   title: string;
 }
 
-export const extractTextFromFile = async (file: File): Promise<ExtractionResult> => {
+export const extractTextFromFile = async (file: File, apiKey?: string): Promise<ExtractionResult> => {
   const mimeType = file.type;
   const fileName = file.name;
   const title = fileName.replace(/\.[^/.]+$/, ""); // Remove extension
@@ -19,6 +18,9 @@ export const extractTextFromFile = async (file: File): Promise<ExtractionResult>
   try {
     const formData = new FormData();
     formData.append('file', file);
+    if (apiKey) {
+      formData.append('apiKey', apiKey);
+    }
 
     const response = await fetch('/api/extract-text', {
       method: 'POST',
@@ -44,16 +46,29 @@ export const extractTextFromFile = async (file: File): Promise<ExtractionResult>
     // Continue to fallback
   }
 
-  // Fallback to client-side extraction if backend fails or for images (which use Gemini)
+  // Fallback to client-side extraction if backend fails
   if (mimeType === 'application/pdf') {
-    const text = await extractTextFromPdf(file);
-    return { text, title };
+    try {
+      const text = await extractTextFromPdf(file);
+      return { text, title };
+    } catch (clientErr: any) {
+      console.error("Client-side PDF extraction also failed:", clientErr);
+      throw new PodcastError(
+        "PDF Extraction Failed",
+        "Both server and client-side extraction failed for this PDF.",
+        "The PDF might be encrypted, image-only, or corrupted. Please try a different PDF or copy-paste the text.",
+        "PDF_EXTRACTION_TOTAL_FAILURE"
+      );
+    }
   }
 
   if (mimeType.startsWith('image/')) {
-    const base64Data = await fileToBase64(file);
-    const text = await extractTextFromImage(base64Data, mimeType);
-    return { text, title };
+    throw new PodcastError(
+      "Unsupported File Type",
+      "Image extraction is not supported in this version.",
+      "Please upload a PDF, Word document, or plain text file.",
+      "UNSUPPORTED_FILE_TYPE"
+    );
   }
 
   if (

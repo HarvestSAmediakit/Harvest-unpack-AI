@@ -1,631 +1,326 @@
-import { GoogleGenAI, Modality } from "@google/genai";
-import { pcmToWav, enhanceAudio } from "../utils/audioUtils";
+import { GoogleGenAI, Modality, ThinkingLevel } from "@google/genai";
+import { pcmToWav } from "../utils/audioUtils";
+import { withRetry } from "../utils/aiUtils";
+import { HOSTS, Host, VOICES, LANGUAGES } from "../constants";
 import { PodcastError } from "../types";
 
-const getAi = () => {
-  // Prioritize the user-provided key from localStorage first (to bypass platform restrictions)
-  // then the platform-selected key, then the environment variable.
-  const customKey = typeof window !== 'undefined' ? localStorage.getItem('gemini_custom_api_key') : null;
-  const key = customKey || process.env.API_KEY || process.env.GEMINI_API_KEY;
-  
-  // Check if key is missing or is a placeholder
-  if (!key || key === "MY_GEMINI_API_KEY" || key.trim() === "") {
-    throw new PodcastError(
-      "API Key Missing",
-      "The Gemini API key is not configured or is invalid.",
-      "Please provide your own Gemini API key in the settings to continue.",
-      "MISSING_API_KEY"
-    );
-  }
-  
-  return new GoogleGenAI({ apiKey: key });
-};
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY || "",
+});
 
-export type PodcastSpeaker = "Thabo" | "Lindiwe";
+/**
+ * Helper function to get the AI instance with a specific API key if provided.
+ */
+function getAi(apiKey?: string) {
+  if (apiKey) {
+    return new GoogleGenAI({
+      apiKey,
+    });
+  }
+  return ai;
+}
+
+/**
+ * Helper function to execute Gemini API calls with exponential backoff retry logic.
+ * Moved to shared utility, keeping this for backward compatibility if needed within file.
+ */
+// export async function withRetry... (can be removed if no longer used internally)
 
 export interface PodcastSegment {
-  speaker: PodcastSpeaker;
+  speaker: string;
   text: string;
+  ssml?: string;
+  timestamp?: string;
 }
-
-export interface Character {
-  id: PodcastSpeaker;
-  name: string;
-  description: string;
-  pronunciationGuide?: { term: string; phonetic: string }[];
-  samplePhrase?: string;
-}
-
-export const AVAILABLE_CHARACTERS: Character[] = [
-  { 
-    id: "Thabo", 
-    name: "Thabo", 
-    description: "Senior Agronomist & Market Analyst. Energetic, loves innovation. Naturally uses South African slang like 'lekker', 'howzit', 'sharp sharp', 'eish', 'make a plan', 'boet', and 'bru'.",
-    pronunciationGuide: [
-      { term: "Agronomy", phonetic: "uh-GRON-uh-mee" },
-      { term: "Hydroponics", phonetic: "hahy-druh-PON-iks" }
-    ],
-    samplePhrase: "Howzit everyone! Welcome to Harvest Unpacked! Let's dive into the latest agricultural innovations, it's going to be lekker."
-  },
-  { 
-    id: "Lindiwe", 
-    name: "Lindiwe", 
-    description: "Livestock Specialist. Practical, witty. Naturally uses South African slang like 'yoh', 'shame', 'now-now', 'just now', 'ag no man', 'sho', and 'heita'.",
-    pronunciationGuide: [
-      { term: "Bovine", phonetic: "BOH-vahyn" },
-      { term: "Veterinary", phonetic: "VET-er-uh-ner-ee" }
-    ],
-    samplePhrase: "Heita! Let's get our hands dirty and talk about practical solutions for your livestock, now-now."
-  }
-];
-
-const parseJson = (text: string) => {
-  let cleaned = text.trim();
-  // Remove markdown code blocks if present
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-  }
-
-  try {
-    // Try direct parse first
-    return JSON.parse(cleaned);
-  } catch (e) {
-    // If it fails, try to extract the JSON array or object
-    const match = cleaned.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
-    if (match) {
-      try {
-        return JSON.parse(match[0]);
-      } catch (innerE) {
-        throw new Error("Failed to parse extracted JSON: " + innerE);
-      }
-    }
-    throw e;
-  }
-};
-
-export type PodcastLanguage = "English" | "Afrikaans";
 
 export const generatePodcastScript = async (
-  articleText: string, 
-  language: PodcastLanguage = "English",
-  selectedCharacters: PodcastSpeaker[] = ["Thabo", "Lindiwe"]
+  articleText: string,
+  language: string = "en",
+  host1: Host = HOSTS[0],
+  host2: Host = HOSTS[1],
+  apiKey?: string,
+  format: "standard" | "impact" | "unpacked" | "combined" = "standard",
 ): Promise<PodcastSegment[]> => {
-  const model = "gemini-3.1-pro-preview";
-  
-  const characterDetails = AVAILABLE_CHARACTERS
-    .filter(c => selectedCharacters.includes(c.id))
-    .map((c, i) => `${i + 1}. ${c.name}: ${c.description}`)
-    .join("\n    ");
+  const model = "gemini-1.5-flash";
+  const currentAi = getAi(apiKey);
 
-  const systemInstruction = `
-    You are a scriptwriter for "Harvest Unpacked DeepDive AI Podcasts", a popular, highly entertaining talkshow podcast for the readership of Harvest SA magazine.
-    Your task is to create a realistic, incredibly fun, engaging, and highly educational deep dive conversation between EXACTLY the 2 characters provided below.
-    The readership of Harvest SA magazine needs to absolutely love this—it should feel like the best talkshow podcast ever!
+  const languageName =
+    LANGUAGES[language as keyof typeof LANGUAGES] || language;
+
+  const standardInstruction = `
+    You are an experienced, award-winning podcast scriptwriter specializing in the "Deep Dive" investigative podcast format. Your goal is to transform complex text into a living, breathing conversation between two smart, relatable hosts. The show is named "DigiMag Podcasts: Deep Dive".
+
+    Transform the article below into a dynamic two-host conversational script between:
+
+    1. ${host1.name}: The Lead Narrator. Sophisticated, articulate, and excellent at framing big-picture questions. She sets the stage and keeps the energy high. Her role is to anchor the conversation and ensure the listener feels guided through the "journey" of the topic.
+    2. ${host2.name}: The Curious Analyst. Deeply knowledgeable but translates everything into human terms. He acts as the "interpreter" of complex data. He uses phrases like "Exactly," "Here's the wild part," and "Think of it this way."
+
+    Core Narrative Objectives (NotebookLM "Human-Parity" Style):
+    1. THE HOOK: Start with a "Wow" moment or a counter-intuitive observation from the text. Make the listener feel like they're about to hear a secret.
+    2. INTELLECTUAL CHEMISTRY: The hosts MUST NOT just take turns reading facts. They must react to each other with genuine intellectual chemistry. Use phrases like "(laughs) Wait, really?", "No kidding?", "That's actually kind of terrifying," or "I never thought of it that way."
+    3. SEAMLESS TURN-TAKING: Write dialogue that feels like real banter. One host might finish the other's sentence or jump in with an "And that's the point right there—"
+    4. SIMPLIFICATION VIA ANALOGY: Use metaphors and analogies to explain complex technical or business concepts. 
+    5. THE "LIGHTBULB" MOMENT: At some point, the hosts should realize the massive, world-changing implication of what they're discussing.
+    6. AUDIO TEXTURE: Incorporate micro-pauses (...) and emphasis (ALL CAPS) for key terms. Use natural-sounding conversational fillers where they fit logically.
+
+    Tone: Intellectual chemistry, curious, rhythmic, slightly irreverent, and profoundly relevant.
+    - RESPOND IN: ${languageName}.
     
-    CRITICAL GOAL: The deep dive MUST deal directly with the content of the uploaded Harvest SA article. The talkshow needs to PROMOTE the content of the article, making the reader understand what it's about in a highly informative and entertaining way. We want the listeners to absolutely fall in love with the presenters! Make them charismatic, witty, passionate, and incredibly lovable.
-    Focus PURELY on the content of the article and promote the company and products mentioned in the article.
+    ENGAGEMENT PATTERNS:
+    1. Host A asks a question; Host B answers with a "hook" before the data.
+    2. Host B interrupts Host A naturally with a "Wait, let me jump in there—this part is critical."
+    3. Both hosts should summarize a section with a "So, the takeaway here is..." mid-episode.
+    
+    Episode requirements (8-12 minutes, ~1200 words total):
+    1. OPENING: High-energy intro. "I'm ${host1.name}, and today we're peeling back the layers on something that... well, it sounds like science fiction but it's actually happening right now."
+    2. ANALYSIS: 4-6 distinct "chapters" of the article, treated as a journey of discovery.
+    3. THE "IMPLICATION": A specific section focusing on the "Why this matters" for the listener's future.
+    4. WRAP-UP: A final, reflective thought. End on a high note.
+`;
 
-    DO NOT use any other characters. ONLY use:
-    ${selectedCharacters.join(", ")}
+  const impactInstruction = `
+    You are creating a professional, world-class AI podcast segment for a show called "DigiMag Podcasts".
+    This is a "DigiMag Impact" audio overview designed to follow Audio-First Awareness.
 
-    LANGUAGE & SLANG: The podcast MUST be generated in ${language}. 
-    - If the language is not English, translate the core concepts and discussion naturally into ${language}.
-    - IMPORTANT: Ensure the output is strictly in ${language}. Do not mix with English unless it's a proper noun or technical term that is commonly used in ${language}.
-    - Characters should still maintain their unique personalities and cultural backgrounds, but speak in ${language}.
-    - INTEGRATE AUTHENTIC SOUTH AFRICAN SLANG: Use local idioms, colloquialisms, and slang contextually and naturally to enhance the local flavor and connection with the audience. Do not force it, but ensure it feels like a genuine South African conversation (e.g., using words like 'lekker', 'howzit', 'eish', 'yoh', 'now-now', 'shame', 'sharp sharp', 'boet', 'bru' where appropriate).
+    FORMAT:
+    Two characters having a sophisticated, intelligent, and highly engaging conversation:
+    - ${host1.name} (Host: drives the structure, maintains pacing, asks clarifying questions)
+    - ${host2.name} (Expert: provides dense information in accessible language)
 
-    Core Objectives:
-    1. Hook the Audience & Promote the Article: Start the podcast with a fun, high-energy, and catchy radio-style intro that hooks the Harvest SA magazine readership immediately. Enthusiastically introduce the specific article being discussed today.
-    2. Lovable Presenters: Make the banter between the two presenters so charming, funny, and warm that the audience falls in love with them. Their chemistry should be electric, like a top-tier morning radio show.
-    3. Fun & Informative Deep Dive: The 2 chosen characters should have a natural, highly entertaining, back-and-forth deep dive discussion about the supplied material's contents. They must clearly explain what the article is about to the reader.
-    4. Detailed & Accessible Explanation: Break down complex agricultural concepts from the article into simple, understandable, and relatable terms.
-    5. Practical Application: Discuss how a farmer can actually use the information from the material in their daily operations, keeping it practical but lively.
-    6. Magazine Shoutout: Enthusiastically mention Harvest SA magazine, praise the author/content of the article, and encourage listeners to go read the full piece.
-    7. Duration: Aim for EXACTLY ~600 words to ensure a perfect 4-minute radio-style podcast duration.
+    TONE & LANGUAGE:
+    - POLISHED AND ENGAGING. Implement engagement patterns: restate the topic, build suspense, insert conversational hooks.
+    - RESPOND IN: ${languageName}.
+    
+    AUDIO-FIRST RULES:
+    1. Verbally describe any visual references.
+    2. Break up complex, multi-clause sentences into shorter, punchier statements.
+    3. Utilize contractions and casual language.
+    4. Strip out artificial filler words such as "um", "uh", or "basically" - do not use them.
+    5. DO NOT read rigid lists or bullet points: convert them into narrative dialogue.
 
-    The Team (Use ONLY these 2):
-    ${characterDetails}
+    OBJECTIVE:
+    Turn the provided article into a compelling discussion that clearly explains the strategic value of the content. Ensure you enthusiastically promote any companies and products mentioned.
 
-    Tone:
-    - Extremely fun, entertaining, and informative.
-    - Charismatic, lovable, and warm.
-    - Authentic and culturally resonant for ${language}.
-    - High energy, like a top-tier radio talkshow.
-    - Realistic, witty banter that Harvest SA readers will love.
-    - Professional yet accessible.
+    STRUCTURE:
+    1. OPENING: Host introduces the brand and frames the opportunity. Mention the latest insights as the critical moment for strategic decision-making.
+    2. CONTEXT SETUP: Briefly explain the subject matter. Position them within the professional industry landscape.
+    3. CORE DISCUSSION: The Analyst must break down why this is a critical moment for strategic growth. Highlight the massive impact.
+    4. STRATEGIC ADVANTAGE: Explain the unique professional relevance of the content.
+    5. EDITORIAL VS ADVERTISING: Explain why high-level editorial is powerful.
+    6. MULTI-CHANNEL IMPACT: Mention Audio and AI engagement.
+    7. STRATEGIC SUMMARY: Analyst summarizes why this is a smart strategic move.
+    8. STRONG CLOSE: Host wraps up with a confident recommendation tone and refined call to action.
 
-    Output Format:
-    Return a JSON array of objects with "speaker" and "text" fields.
+    STYLE GUIDELINES:
+    - Sound like a highly strategic but immensely engaging discussion.
+    - Use real-world business logic.
+    - Keep it professional and world-class.
+    - No bullet points — natural spoken dialogue only.
+    - Duration: 1–2 minutes max (approx. 200-300 words).
   `;
 
-  // Primary: Gemini
-  console.log("Attempting Gemini primary generation for script...");
-  try {
-    const response = await generateWithTokenGuard(
-      [{ parts: [{ text: `Article Content: ${articleText}\n\nGenerate a highly entertaining, fun, and informative 4-minute radio-style podcast script (~600 words) in ${language} that explains the article to the reader using EXACTLY these 2 characters: ${selectedCharacters.join(", ")}. Focus on promoting the company and products in the article.` }] }],
-      systemInstruction,
-      "application/json"
-    );
+  const unpackedInstruction = `
+    You are creating an episode of “DigiMag Unpacked: Professional AI Insights” by DigiMag Media.
+    This is a premium South African professional podcast that unpacks corporate innovations, industry trends, and strategic success through intelligent, natural conversation.
+
+    FORMAT:
+    - Two speakers:
+      1. ${host1.name}
+      2. ${host2.name}
+    - Professional back-and-forth dialogue.
+    - Sounds like a high-end, world-class podcast.
+
+    TONE & LANGUAGE (CRITICAL):
+    - POLISHED, INTELLECTUAL, AND ENGAGING. The hosts should sound like experienced professionals with natural chemistry. Use sophisticated reactions, smooth interruptions, and refined banter.
+    - Maintain a high-end broadcasting standard.
+    - RESPOND IN: ${languageName}.
+    - Use clear, articulate South African English.
+
+    HYPER-REALISTIC SPEECH RULES:
+    1. Use professional fillers and natural breathing pauses.
+    2. Write natural, flowing dialogue that reflects real high-level interviews.
+    3. Include refined self-corrections or thoughtful pauses.
+    4. Have the hosts build on each other's points naturally.
+    5. CRITICAL REQUIREMENT: You MUST include at least two instances where ${host1.name} builds on ${host2.name}'s point with a sophisticated "Wait—" or "That actually brings up—" moment.
+    6. The dialogue MUST sound sophisticated and world-class.
+
+    STRUCTURE:
+    1. Hook: Catchy but professional opening.
+    2. Introduction of topic/innovator. Highlight them with professional excellence.
+    3. Deep dive into: Innovations, Strategic advantages, and Industry impact.
+    4. Real-world value: Economic impact and professional growth.
+    5. Strategic summary: Why this matters now.
+    6. Professional close: Highly complementary and refined.
+
+    STYLE RULES:
+    - Use professional broadcast language.
+    - Include insightful reactions: “That’s a critical distinction…”, “Looking at the broader landscape…”, “From a strategic perspective…”.
+    - Break down complex themes with professional clarity.
+    - Maintain a tone of professional enthusiasm throughout.
+
+    STRICT RULES:
+    - ONLY use the provided content.
+    - Do NOT invent facts.
+    - Keep it authentic and highly professional.
+    - LENGTH: 60-90 seconds (approx. 150–200 words total).
+
+    GOAL:
+    Create a highly professional, intelligent, and engaging discussion that positions the subject as a leader in their field.
+
+    END WITH A SIGNATURE CLOSING LINE:
+    Choose one:
+    - “A masterclass in professional excellence and innovation.”
+    - “That is why they remain a key player in South Africa’s professional landscape.”
+    - “A compelling look at where the industry is headed.”
+    - “Insightful, strategic, and profoundly relevant.”
+  `;
+
+  const combinedInstruction = `
+    You are creating an episode of “DigiMag Podcasts: The Pulse of Print, Resonating in Audio”.
+    This is a premium South African professional podcast that combines conversational deep dives with industry highlights, unpacking companies, innovations, and economic trends through intelligent, polished, and authentic conversation.
+
+    FORMAT:
+    - Two speakers:
+      1. ${host1.name} (Host: ${host1.description})
+      2. ${host2.name} (Analyst: ${host2.description})
+    - Professional conversational back-and-forth.
+    - Sounds like a top-tier professional podcast.
+
+    TONE & LANGUAGE (CRITICAL):
+    - RESPOND IN: ${languageName}. Use professional, sophisticated language with natural South African cadences.
+    - Intellectual, credible, and articulate.
+    - Professional but engagingly human.
+    - Sharp, world-class dialogue between seasoned presenters.
+    - Proudly South African but globally relevant.
+    - Avoid over-the-top hype — focus on real value and strategic insight.
+
+    HYPER-REALISTIC SPEECH RULES:
+    1. Use natural professional fillers and breathing pauses.
+    2. Write fluid dialogue that reflects high-end broadcasting.
+    3. Include thoughtful self-corrections or reflective pauses.
+    4. Have the hosts build on each other's insights naturally with "That is a fascinating angle—" or "Indeed, and if you consider—".
+    5. CRITICAL REQUIREMENT: You MUST include at least two instances of high-level conversational building between ${host1.name} and ${host2.name} that highlights their deep professional chemistry.
+    6. The dialogue MUST sound incredibly polished and world-class.
+
+    STRUCTURE:
+    1. Hook: Sophisticated opening that frames the discussion.
+    2. Introduction of topic/brand.
+    3. Deep dive: Strategic advantages, Innovation, and Economic context.
+    4. Real-world impact: Industry transformation and professional growth.
+    5. Strategic summary: The "Why Now" factor.
+    6. Refined close: Professional and complementary.
+
+    STYLE RULES:
+    - Use polished broadcast language.
+    - Include high-level reactions: “Precisely…”, “The data actually suggests…”, “That is where the real disruption is happening…”.
+    - Distill complex ideas into strategic clarity.
+    - Position the subject as a professional leader.
+
+    STRICT RULES:
+    - ONLY use the provided content.
+    - Do NOT invent facts.
+    - Maintain a world-class professional standard.
+    - LENGTH: 3-5 minutes (approx. 450-700 words total).
+
+    GOAL:
+    Create a world-class, intelligent discussion that positions the featured subject as a strategic leader — delivering profound insight in a sophisticated South African style.
+
+    END WITH A SIGNATURE CLOSING LINE:
+    Choose one:
+    - “An essential perspective on today’s professional landscape.”
+    - “That highlights the standard of excellence we’re seeing in the industry.”
+    - “Proving once again why strategic innovation is the key to growth.”
+    - “A compelling look at the leaders shaping our future.”
+
+    Language: ${languageName}.
+    Brand: DigiMag Podcasts.
+  `;
+
+  const systemInstruction = `
+    ${format === "impact" ? impactInstruction : format === "unpacked" ? unpackedInstruction : format === "combined" ? combinedInstruction : standardInstruction}
     
-    const script = parseJson(response.text || "[]");
-    if (Array.isArray(script) && script.length > 0) {
-      return script;
-    }
-    throw new Error("Empty script from Gemini");
-  } catch (e: any) {
-    console.error("Gemini Script Generation Error:", e);
-    
-    if (e instanceof PodcastError) throw e;
+    Output Format:
+    Return a JSON array of objects. Each object MUST include:
+    - "speaker": The name of the host
+    - "text": Spoken line (conversational, 1-2 sentences max)
+    - "ssml": SSML with <break time='500ms'/> for natural pauses
+    - "timestamp": "MM:SS (cumulative from start)"
+  `;
 
-    // Fallback: Grok (x.ai)
-    console.log("Falling back to x.ai (Grok) for script generation...");
-    try {
-      const xaiResponse = await fetch("/api/xai/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: `Article Content: ${articleText}\n\nGenerate a highly entertaining, fun, and informative 4-minute radio-style podcast script (~600 words) in ${language} that explains the article to the reader using EXACTLY these 2 characters: ${selectedCharacters.join(", ")}. Focus on promoting the company and products in the article.`,
-          systemInstruction,
-          responseFormat: "json_object"
-        })
-      });
+  const isUrl = articleText.startsWith("http");
+  let contents: any[] = [];
 
-      if (xaiResponse.ok) {
-        const data = await xaiResponse.json();
-        const script = parseJson(data.text || "[]");
-        if (Array.isArray(script) && script.length > 0) {
-          return script;
-        }
-      }
-    } catch (xaiError) {
-      console.error("x.ai Fallback Error (Script):", xaiError);
-    }
-
-    // Fallback to OpenAI if Gemini fails (e.g. quota exceeded)
-    const errorMessage = e.message || "";
-    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
-      // Try Grok fallback first
-      console.log("Attempting x.ai (Grok) fallback for script generation...");
-      try {
-        const xaiResponse = await fetch("/api/xai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: `Article Content: ${articleText}\n\nGenerate a highly entertaining, fun, and informative deep dive podcast script (~600-800 words) in ${language} with EXACTLY these 2 characters: ${selectedCharacters.join(", ")}.`,
-            systemInstruction,
-            responseFormat: "json_object"
-          })
-        });
-
-        if (xaiResponse.ok) {
-          const data = await xaiResponse.json();
-          const script = parseJson(data.text || "[]");
-          if (Array.isArray(script) && script.length > 0) {
-            return script;
-          }
-        }
-      } catch (xaiError) {
-        console.error("x.ai Fallback Error (Script):", xaiError);
-      }
-
-      console.log("Attempting OpenAI fallback for script generation...");
-      try {
-        const fallbackResponse = await fetch("/api/openai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: `Article Content: ${articleText}\n\nGenerate a highly entertaining, fun, and informative deep dive podcast script (~600-800 words) in ${language} with EXACTLY these 2 characters: ${selectedCharacters.join(", ")}.`,
-            systemInstruction,
-            responseFormat: "json_object"
-          })
-        });
-
-        if (fallbackResponse.ok) {
-          const data = await fallbackResponse.json();
-          const script = parseJson(data.text || "[]");
-          if (Array.isArray(script) && script.length > 0) {
-            return script;
-          }
-        } else {
-          const errorData = await fallbackResponse.json();
-          if (errorData.error?.includes("OPENAI_API_KEY")) {
-            throw new PodcastError(
-              "Quota Exceeded & Fallback Failed",
-              "Gemini quota is full and neither x.ai nor OpenAI fallbacks are configured.",
-              "Please add an XAI_API_KEY or OPENAI_API_KEY in the Secrets panel to enable fallback generation.",
-              "QUOTA_EXCEEDED_NO_FALLBACK"
-            );
-          }
-        }
-      } catch (fallbackError: any) {
-        console.error("OpenAI Fallback Error:", fallbackError);
-        if (fallbackError instanceof PodcastError) throw fallbackError;
-      }
-    }
-
-    if (errorMessage.toLowerCase().includes("api key not valid") || errorMessage.toLowerCase().includes("invalid_argument")) {
-      throw new PodcastError(
-        "Invalid API Key",
-        "The Gemini API key provided is not valid.",
-        "Please check your GEMINI_API_KEY in the Secrets panel or select a valid key using the 'Select API Key' button.",
-        "INVALID_API_KEY"
-      );
-    }
-
-    if (e.message?.includes("safety")) {
-      throw new PodcastError(
-        "Content Flagged",
-        "The AI safety filters blocked this content.",
-        "Try rephrasing the article or removing potentially sensitive topics.",
-        "SAFETY_FLAG"
-      );
-    }
-
-    throw new PodcastError(
-      "Script Generation Error",
-      errorMessage || "An unexpected error occurred during script generation.",
-      "Check your internet connection and try again in a few moments.",
-      "GENERIC_SCRIPT_ERROR"
-    );
-  }
-};
-
-export const extractTextFromImage = async (base64Data: string, mimeType: string): Promise<string> => {
-  const model = "gemini-3.1-pro-preview";
-  const prompt = "Analyze this image in detail. If it contains text or is an article, extract the full content accurately. If it is a photograph or diagram, describe in detail what is shown, including any agricultural context, subjects, conditions, and notable features so it can be discussed in a podcast. Return the extracted text and/or detailed description.";
-
-  try {
-    const response = await getAi().models.generateContent({
-      model,
-      contents: [{
+  if (isUrl) {
+    contents = [
+      {
         parts: [
-          { inlineData: { data: base64Data, mimeType } },
-          { text: prompt }
-        ]
-      }],
-    });
-
-    return response.text || "";
-  } catch (e: any) {
-    console.error("Image Extraction Error:", e);
-    throw new PodcastError(
-      "Image Analysis Failed",
-      e.message || "The AI could not process the image or extract text.",
-      "Ensure the image is clear, well-lit, and contains readable text. Try a different file format if possible.",
-      "IMAGE_EXTRACTION_ERROR"
-    );
-  }
-};
-
-const withRetry = async <T>(fn: () => Promise<T>, retries = 5, delay = 5000): Promise<T> => {
-  try {
-    return await fn();
-  } catch (error: any) {
-    if (retries > 0 && (error.status === 429 || error.message?.includes("429"))) {
-      // Add random jitter: delay * (0.5 to 1.5)
-      const jitter = delay * (0.5 + Math.random());
-      console.log(`Rate limited (429). Retrying in ${Math.round(jitter)}ms... (${retries} retries left)`);
-      await new Promise(resolve => setTimeout(resolve, jitter));
-      return withRetry(fn, retries - 1, delay * 2);
-    }
-    throw error;
-  }
-};
-
-// Simple Queue with concurrency and velocity control
-class TaskQueue {
-  private queue: (() => Promise<any>)[] = [];
-  private running = 0;
-  private lastRunTime = 0;
-  private concurrency: number;
-  private minDelay: number;
-
-  constructor(concurrency: number, minDelay: number = 12000) {
-    this.concurrency = concurrency;
-    this.minDelay = minDelay;
-  }
-
-  async add<T>(task: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        try {
-          resolve(await task());
-        } catch (e) {
-          reject(e);
-        }
-      });
-      this.next();
-    });
-  }
-
-  private next() {
-    if (this.running >= this.concurrency || this.queue.length === 0) return;
-
-    // Check if we need to wait to satisfy the RPM limit
-    const now = Date.now();
-    const timeSinceLast = now - this.lastRunTime;
-    if (timeSinceLast < this.minDelay) {
-      setTimeout(() => this.next(), this.minDelay - timeSinceLast);
-      return;
-    }
-
-    this.running++;
-    this.lastRunTime = Date.now();
-    const task = this.queue.shift();
-    task!().finally(() => {
-      this.running--;
-      this.next();
-    });
-  }
-}
-
-// Instantiate with a concurrency limit of 2 and 12s delay (5 RPM)
-const geminiQueue = new TaskQueue(2, 12000);
-
-const MODELS = {
-  PRIMARY: "gemini-3.1-pro-preview",
-  FALLBACK: "gemini-3-flash-preview"
-};
-
-const PRO_TPM_THRESHOLD = 200000; // Leave 50k buffer for output/thinking
-
-/**
- * Estimates the token count for a prompt without sending it to the generator.
- */
-const getPromptTokenCount = async (contents: any, modelName: string): Promise<number> => {
-  try {
-    const ai = getAi();
-    // Use the native SDK method
-    const response = await ai.models.countTokens({
-      model: modelName,
-      contents: contents,
-    });
-    return response.totalTokens;
-  } catch (error) {
-    console.error("Token estimation failed, defaulting to character-based guess.");
-    // Fallback: ~4 characters per token
-    return JSON.stringify(contents).length / 4;
-  }
-};
-
-/**
- * Enhanced generateContent with Token Guard and Model Fallback
- */
-const generateWithTokenGuard = async (
-  contents: any,
-  systemInstruction?: string,
-  responseMimeType?: string
-) => {
-  // 1. Estimate the "Cost"
-  const tokenCount = await getPromptTokenCount(contents, MODELS.PRIMARY);
-  
-  let selectedModel = MODELS.PRIMARY;
-
-  // 2. Logic: If too heavy, don't even try Pro
-  if (tokenCount > PRO_TPM_THRESHOLD) {
-    console.warn(`🚀 Prompt too large (${tokenCount} tokens). Bypassing Pro and using Flash.`);
-    selectedModel = MODELS.FALLBACK;
+          {
+            text: `Summarize and generate a podcast script for this article: ${articleText}. Generate a 3-5 minute discussion in ${languageName}.`,
+          },
+        ],
+      },
+    ];
+  } else {
+    contents = [
+      {
+        parts: [
+          {
+            text: `Article Content: ${articleText}\n\nGenerate a podcast script for a 3-5 minute discussion in ${languageName}.`,
+          },
+        ],
+      },
+    ];
   }
 
   return await withRetry(async () => {
-    try {
-      console.log(`Attempting generation with: ${selectedModel}`);
-      
-      const response = await getAi().models.generateContent({
-        model: selectedModel,
-        contents: contents,
-        config: {
-          systemInstruction,
-          responseMimeType,
-        },
-      });
-
-      return response;
-    } catch (error: any) {
-      // Check if it's a Quota Error (429)
-      const isQuotaError = error.status === 429 || error.message?.includes("quota") || error.message?.includes("429");
-      
-      // If we hit a quota error on the Pro model, switch to Flash for the next retry
-      if (isQuotaError && selectedModel === MODELS.PRIMARY) {
-        console.warn("⚠️ Primary Model Quota Exhausted. Switching to Fallback (Flash)...");
-        selectedModel = MODELS.FALLBACK;
-        // Throwing the error again so withRetry catches it and triggers a fresh attempt
-        throw error; 
-      }
-      
-      throw error;
-    }
-  }, 3, 10000); // 3 retries, starting at 10s to clear the "minute" limit
-};
-
-export const generatePodcastAudio = async (
-  script: PodcastSegment[], 
-  language: PodcastLanguage = "English",
-  onProgress?: (current: number, total: number) => void
-): Promise<Blob | null> => {
-  const model = "gemini-2.5-flash-preview-tts";
-  
-  const voiceMap: Record<string, string> = {
-    "Thabo": "Fenrir",
-    "Lindiwe": "Kore"
-  };
-
-  try {
-    const groupedSegments: PodcastSegment[] = [];
-    for (const segment of script) {
-      const last = groupedSegments[groupedSegments.length - 1];
-      if (last && last.speaker === segment.speaker) {
-        last.text += " " + segment.text;
-      } else {
-        groupedSegments.push({ ...segment });
-      }
-    }
-
-    const totalSegments = groupedSegments.length;
-    let completedSegments = 0;
-
-    const results: { bytes: Uint8Array, speaker: string }[] = new Array(totalSegments);
-    
-    const processSegment = async (index: number) => {
-      const segment = groupedSegments[index];
-      const voiceName = voiceMap[segment.speaker] || "Fenrir";
-      
-      let pcmData: string | undefined;
-
-      // Use the queue to manage execution
-      pcmData = await geminiQueue.add(async () => {
-        try {
-          return await withRetry(async () => {
-            const response = await getAi().models.generateContent({
-              model,
-              contents: [{ parts: [{ text: `Say the following in ${language} as ${segment.speaker}. IMPORTANT: The output MUST be in ${language}. If the text is in ${language}, read it naturally: ${segment.text}` }] }],
-              config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                  voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName },
-                  },
-                },
-              },
-            });
-            return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-          }, 5, 5000);
-        } catch (e: any) {
-          console.error(`Gemini TTS Error for ${segment.speaker}:`, e);
-          const errorMessage = e.message || "";
-          if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429")) {
-            console.log(`Attempting OpenAI TTS fallback for ${segment.speaker}...`);
-            try {
-              const openAiVoiceMap: Record<string, string> = {
-                "Thabo": "onyx",
-                "Lindiwe": "shimmer"
-              };
-              const fallbackResponse = await fetch("/api/openai/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  text: segment.text,
-                  voice: openAiVoiceMap[segment.speaker] || "alloy"
-                }),
-              });
-              if (!fallbackResponse.ok) throw new Error("OpenAI TTS failed");
-              const blob = await fallbackResponse.blob();
-              const arrayBuffer = await blob.arrayBuffer();
-              return btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-            } catch (fallbackError: any) {
-              console.error("OpenAI Fallback Error:", fallbackError);
-              throw new PodcastError(
-                "Audio Generation Failed",
-                "Both Gemini and OpenAI TTS services are currently unavailable or have reached their quota.",
-                "Please try again in a few minutes or check your API key settings.",
-                "TTS_SERVICE_UNAVAILABLE"
-              );
-            }
-          }
-          if (errorMessage.toLowerCase().includes("key")) {
-            throw new PodcastError(
-              "Invalid API Key",
-              "The API key provided is invalid or has insufficient permissions.",
-              "Please check your API key in the settings and ensure it is valid.",
-              "INVALID_API_KEY"
-            );
-          }
-          throw new PodcastError(
-            "Audio Generation Failed",
-            `An error occurred while generating audio for ${segment.speaker}: ${errorMessage}`,
-            "Please try again or check the console for more details.",
-            "TTS_GENERATION_FAILED"
-          );
-        }
-      });
-      
-      if (pcmData) {
-        const binaryString = atob(pcmData);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        results[index] = { bytes, speaker: segment.speaker };
-      }
-
-      completedSegments++;
-      if (onProgress) {
-        onProgress(completedSegments, totalSegments);
-      }
-    };
-
-    // Run all processes using the queue
-    await Promise.all(groupedSegments.map((_, index) => processSegment(index)));
-
-    const audioChunks = results.filter(r => r !== undefined);
-
-    if (audioChunks.length === 0) {
-      throw new PodcastError(
-        "Audio Generation Failed",
-        "The AI failed to produce any audio segments.",
-        "This might be a temporary service issue. Try generating the podcast again.",
-        "EMPTY_AUDIO"
-      );
-    }
-
-    const totalLength = audioChunks.reduce((acc, curr) => acc + curr.bytes.length, 0);
-    const combinedPcm = new Uint8Array(totalLength);
-    let offset = 0;
-    let sampleOffset = 0;
-    const markers: { title: string; sampleOffset: number }[] = [];
-    
-    for (const chunk of audioChunks) {
-      markers.push({ title: chunk.speaker, sampleOffset });
-      combinedPcm.set(chunk.bytes, offset);
-      offset += chunk.bytes.length;
-      sampleOffset += chunk.bytes.length / 2;
-    }
-
-    // Convert combined PCM to base64 for enhanceAudio
-    let binary = '';
-    for (let i = 0; i < combinedPcm.length; i++) {
-      binary += String.fromCharCode(combinedPcm[i]);
-    }
-    const finalBase64 = window.btoa(binary);
-
-    return enhanceAudio(finalBase64, markers);
-  } catch (e: any) {
-    console.error("Failed to generate audio", e);
-    if (e instanceof PodcastError) throw e;
-    
-    const errorMessage = e.message || "";
-    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429")) {
-      throw new PodcastError(
-        "Audio Quota Exceeded",
-        "The text-to-speech service has reached its limit for now.",
-        "Please wait a few minutes before trying again, or use a shorter script.",
-        "TTS_QUOTA_EXCEEDED"
-      );
-    }
-    
-    throw new PodcastError(
-      "Audio Synthesis Error",
-      errorMessage || "An error occurred while converting the script to audio.",
-      "Try refreshing the page or generating a shorter podcast.",
-      "GENERIC_AUDIO_ERROR"
-    );
-  }
-};
-
-export const generateSampleAudio = async (speaker: PodcastSpeaker, text: string, language: PodcastLanguage = "English"): Promise<Blob | null> => {
-  const model = "gemini-2.5-flash-preview-tts";
-  
-  const voiceMap: Record<string, string> = {
-    "Thabo": "Fenrir",
-    "Lindiwe": "Kore"
-  };
-
-  const voiceName = voiceMap[speaker] || "Fenrir";
-
-  try {
-    const response = await getAi().models.generateContent({
+    const response = await currentAi.models.generateContent({
       model,
-      contents: [{ parts: [{ text: `Say the following in ${language} as ${speaker} with a strong, authentic South African accent. If the text is in ${language}, read it naturally: ${text}` }] }],
+      contents,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        // @ts-ignore
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      },
+    });
+
+    try {
+      let rawText = response.text || "[]";
+      // Remove think blocks if any
+      rawText = rawText.replace(/<think>[\s\S]*?<\/think>/g, "");
+      rawText = rawText.replace(/```json\n?|```/g, "").trim();
+      return JSON.parse(rawText);
+    } catch (e: any) {
+      console.error("Failed to parse script:", e, response.text);
+      throw new PodcastError(
+        "Script Generation Failed",
+        `JSON Parse Error: ${e?.message}`,
+        "Try using a different AI model (e.g., switch to a more capable model in Settings), or try a different article.",
+        "GEMINI_SCRIPT_PARSE_FAILED"
+      );
+    }
+  });
+};
+
+export const generateVoiceSample = async (
+  voiceName: string,
+  language: string = "en",
+  apiKey?: string,
+): Promise<string | null> => {
+  const model = "gemini-1.5-flash";
+  const currentAi = getAi(apiKey);
+  const voice = VOICES.find((v) => v.id === voiceName);
+  const displayName = voice ? voice.name : voiceName;
+  const description = voice ? voice.description : "South African voice";
+  const languageName =
+    LANGUAGES[language as keyof typeof LANGUAGES] || language;
+
+  const text = `Speak with a clear, authentic ${description}. Say: "Hello, I am ${displayName}. I'm excited to dive into some professional insights with you today on DigiMag Podcasts in ${languageName}."`;
+
+  const response = await withRetry(() =>
+    currentAi.models.generateContent({
+      model,
+      contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -634,520 +329,165 @@ export const generateSampleAudio = async (speaker: PodcastSpeaker, text: string,
           },
         },
       },
-    });
+    }),
+  );
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) {
-      return enhanceAudio(base64Audio);
-    }
-    return null;
-  } catch (e: any) {
-    console.error(`Failed to generate sample audio for ${speaker}`, e);
-    const errorMessage = e.message || "";
-    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
-      console.log(`Attempting OpenAI TTS fallback for sample audio (${speaker})...`);
+  const base64Audio =
+    response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  return base64Audio || null;
+};
+
+export const generatePodcastAudio = async (
+  script: PodcastSegment[],
+  language: string = "en",
+  host1: Host = HOSTS[0],
+  host2: Host = HOSTS[1],
+  voice1: string = HOSTS[0].defaultVoice,
+  voice2: string = HOSTS[1].defaultVoice,
+  apiKey?: string,
+  onProgress?: (progress: number) => void,
+): Promise<string | null> => {
+  const model = "gemini-1.5-flash";
+  const currentAi = getAi(apiKey);
+  const languageName =
+    LANGUAGES[language as keyof typeof LANGUAGES] || language;
+
+  // Chunk the script to parallelize generation (4 segments per chunk is optimal for speed/reliability)
+  const chunkSize = 4;
+  const chunks: PodcastSegment[][] = [];
+  for (let i = 0; i < script.length; i += chunkSize) {
+    chunks.push(script.slice(i, i + chunkSize));
+  }
+
+  const totalChunks = chunks.length;
+  let completedChunks = 0;
+
+  try {
+    const validChunks: string[] = [];
+    for (let index = 0; index < chunks.length; index++) {
+      const chunk = chunks[index];
+      const prompt = chunk.map((s) => `${s.speaker}: ${s.text}`).join("\n");
+
       try {
-        const openAiVoiceMap: Record<string, string> = {
-          "Thabo": "onyx",
-          "Lindiwe": "shimmer",
-          "Dr. Thandi": "nova",
-          "Dr. Thandi Mthembu": "nova",
-          "JP BoerBot": "echo",
-          "JP \"BoerBot\" van der Merwe": "echo",
-          "Gogo Nomsa": "fable",
-          "Prof. Dewald": "alloy"
-        };
-        const fallbackResponse = await fetch("/api/openai/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text,
-            voice: openAiVoiceMap[speaker] || "alloy"
-          })
-        });
-        if (fallbackResponse.ok) {
-          const blob = await fallbackResponse.blob();
-          const arrayBuffer = await blob.arrayBuffer();
-          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        const response = await withRetry(() =>
+          currentAi.models.generateContent({
+            model,
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `Generate a high-quality audio recording for the "DigiMag Podcasts" podcast in ${languageName} (Part ${index + 1}).
           
-          // Resample to 24kHz mono to match enhanceAudio expectations
-          const offlineCtx = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * 24000), 24000);
-          const source = offlineCtx.createBufferSource();
-          source.buffer = audioBuffer;
-          source.connect(offlineCtx.destination);
-          source.start();
-          const resampledBuffer = await offlineCtx.startRendering();
+          STRICT REQUIREMENT: Every speaker MUST have a thick, authentic South African accent appropriate to their background. 
+          - ${host1.name}: ${host1.description}. 
+          - ${host2.name}: ${host2.description}. 
           
-          const channelData = resampledBuffer.getChannelData(0);
-          const pcmData = new Int16Array(channelData.length);
-          for (let i = 0; i < channelData.length; i++) {
-            const s = Math.max(-1, Math.min(1, channelData[i]));
-            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-          }
+          Make them sound incredibly human, energetic, and engaging. Give them distinct cadences and rhythms. Feel free to add subtle breath sounds, slight chuckles where appropriate, and natural inflections to make it sound exactly like an unscripted, highly expressive human conversation rather than AI reading text. Speak the provided text exactly as written in ${languageName}, applying authentic South African cadences, emphasis, and pronunciation.
           
-          let binary = '';
-          const bytes = new Uint8Array(pcmData.buffer, pcmData.byteOffset, pcmData.byteLength);
-          for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
-          }
-          const finalBase64 = window.btoa(binary);
-          return enhanceAudio(finalBase64);
+          Script:\n\n${prompt}`,
+                  },
+                ],
+              },
+            ],
+            config: {
+              responseModalities: [Modality.AUDIO],
+              speechConfig: {
+                multiSpeakerVoiceConfig: {
+                  speakerVoiceConfigs: [
+                    {
+                      speaker: host1.name,
+                      voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: voice1 },
+                      },
+                    },
+                    {
+                      speaker: host2.name,
+                      voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: voice2 },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+        );
+
+        completedChunks++;
+        if (onProgress) {
+          onProgress(Math.round((completedChunks / totalChunks) * 100));
         }
-      } catch (fallbackError) {
-        console.error("OpenAI TTS Fallback Error (Sample):", fallbackError);
+
+        const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (data) {
+          validChunks.push(data);
+        }
+
+        // Add a 2 second delay between chunks to avoid rate limits
+        if (index < chunks.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      } catch (err: any) {
+        if (err?.status === 403 || err?.message?.includes("403") || err?.message?.toLowerCase().includes("permission denied")) {
+          console.error(
+            `Permission Denied for Gemini TTS model (Chunk ${index + 1}). This model requires a valid API key with appropriate permissions.`,
+          );
+          throw new PodcastError(
+            "Gemini Audio Generation Failed",
+            "Permission denied for the requested TTS model.",
+            "Please verify your Gemini API key has access to the flash-preview-tts model and billing is enabled.",
+            "GEMINI_TTS_403"
+          );
+        } else if (err?.status === 429 || err?.message?.includes("429")) {
+          throw new PodcastError(
+            "Gemini Audio Generation Failed",
+            "Rate limit exceeded while generating audio.",
+            "Please wait a moment and try again, or check your API quotas.",
+            "GEMINI_TTS_RATE_LIMIT"
+          );
+        } else {
+          console.error(`Failed to generate chunk ${index + 1}`, err);
+          throw new PodcastError(
+            "Gemini Audio Generation Failed",
+            `An error occurred while generating audio chunk ${index + 1}: ${err?.message || "Unknown error"}`,
+            "Please try again or check your network connection.",
+            "GEMINI_TTS_FAILED"
+          );
+        }
       }
     }
-    return null;
-  }
-};
 
-export const generatePodcastSummary = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<string> => {
-  const model = "gemini-3.1-pro-preview";
-  const prompt = `Based on the following podcast script, provide a very brief (1-2 sentence) summary or description in ${language} that would entice a listener.
-  
-  Script:
-  ${script.map(s => `${s.speaker}: ${s.text}`).join("\n")}
-  `;
+    if (validChunks.length === 0) return null;
 
-  try {
-    const response = await generateWithTokenGuard(
-      [{ parts: [{ text: prompt }] }],
-      "You are a helpful podcast assistant."
+    // Concatenate raw PCM data
+    const binaryChunks = validChunks.map((c) => {
+      const binary = atob(c);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    });
+
+    const totalLength = binaryChunks.reduce(
+      (acc, chunk) => acc + chunk.length,
+      0,
     );
-
-    return response.text || "A deep dive into agricultural insights.";
-  } catch (e: any) {
-    console.error("Failed to generate summary", e);
-    const errorMessage = e.message || "";
-    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
-      // Try Grok fallback first
-      try {
-        const xaiResponse = await fetch("/api/xai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, responseFormat: "json_object" })
-        });
-        if (xaiResponse.ok) {
-          const data = await xaiResponse.json();
-          return data.text || "A deep dive into agricultural insights.";
-        }
-      } catch (xaiError) {
-        console.error("x.ai Fallback Error (Summary):", xaiError);
-      }
-
-      console.log("Attempting OpenAI fallback for summary...");
-      try {
-        const fallbackResponse = await fetch("/api/openai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt })
-        });
-        if (fallbackResponse.ok) {
-          const data = await fallbackResponse.json();
-          return data.text || "A deep dive into agricultural insights.";
-        }
-      } catch (fallbackError) {
-        console.error("OpenAI Fallback Error (Summary):", fallbackError);
-      }
-    }
-    return "A deep dive into agricultural insights.";
-  }
-};
-
-export interface PodcastChapter {
-  title: string;
-  description: string;
-}
-
-export const generatePodcastChapters = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<PodcastChapter[]> => {
-  const model = "gemini-3.1-pro-preview";
-  const prompt = `Based on the following podcast script, identify 3-4 key "chapters" or segments. For each, provide a short title and a brief description in ${language} of what is discussed in that part.
-  
-  Script:
-  ${script.map(s => `${s.speaker}: ${s.text}`).join("\n")}
-  
-  Return a JSON array of objects with "title" and "description" fields.`;
-
-  try {
-    const response = await generateWithTokenGuard(
-      [{ parts: [{ text: prompt }] }],
-      "You are a helpful podcast assistant.",
-      "application/json"
-    );
-
-    return parseJson(response.text || "[]");
-  } catch (e: any) {
-    console.error("Failed to generate chapters", e);
-    const errorMessage = e.message || "";
-    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
-      // Try Grok fallback first
-      try {
-        const xaiResponse = await fetch("/api/xai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, responseFormat: "json_object" })
-        });
-        if (xaiResponse.ok) {
-          const data = await xaiResponse.json();
-          return parseJson(data.text || "[]");
-        }
-      } catch (xaiError) {
-        console.error("x.ai Fallback Error (Chapters):", xaiError);
-      }
-
-      console.log("Attempting OpenAI fallback for chapters...");
-      try {
-        const fallbackResponse = await fetch("/api/openai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, responseFormat: "json_object" })
-        });
-        if (fallbackResponse.ok) {
-          const data = await fallbackResponse.json();
-          return parseJson(data.text || "[]");
-        }
-      } catch (fallbackError) {
-        console.error("OpenAI Fallback Error (Chapters):", fallbackError);
-      }
-    }
-    return [];
-  }
-};
-
-export const generateShowNotes = async (script: PodcastSegment[], chapters: PodcastChapter[], language: PodcastLanguage = "English"): Promise<string> => {
-  const model = "gemini-3.1-pro-preview";
-  const prompt = `Generate detailed show notes for a podcast episode in ${language} based on the following script and chapters.
-  
-  The show notes should include:
-  1. A catchy episode title in ${language}.
-  2. A detailed overview of the discussion in ${language}, highlighting the fun and informative deep dive.
-  3. Key takeaways (bullet points) in ${language}.
-  4. Mention of the Harvest Unpacked experts involved and a shoutout to the Harvest SA magazine readership.
-  
-  Script:
-  ${script.map(s => `${s.speaker}: ${s.text}`).join("\n")}
-  
-  Chapters:
-  ${chapters.map(c => `- ${c.title}: ${c.description}`).join("\n")}
-  
-  Format the output in clean Markdown. Do NOT include triple backticks around the markdown itself.`;
-
-  try {
-    const response = await generateWithTokenGuard(
-      [{ parts: [{ text: prompt }] }],
-      "You are a helpful podcast assistant."
-    );
-
-    return response.text || "Show notes are being prepared.";
-  } catch (e: any) {
-    console.error("Failed to generate show notes", e);
-    const errorMessage = e.message || "";
-    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
-      // Try Grok fallback first
-      try {
-        const xaiResponse = await fetch("/api/xai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, responseFormat: "json_object" })
-        });
-        if (xaiResponse.ok) {
-          const data = await xaiResponse.json();
-          return data.text || "Failed to generate show notes.";
-        }
-      } catch (xaiError) {
-        console.error("x.ai Fallback Error (Show Notes):", xaiError);
-      }
-
-      console.log("Attempting OpenAI fallback for show notes...");
-      try {
-        const fallbackResponse = await fetch("/api/openai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt })
-        });
-        if (fallbackResponse.ok) {
-          const data = await fallbackResponse.json();
-          return data.text || "Show notes are being prepared.";
-        }
-      } catch (fallbackError) {
-        console.error("OpenAI Fallback Error (Show Notes):", fallbackError);
-      }
-    }
-    return "Failed to generate show notes.";
-  }
-};
-
-export interface GlossaryTerm {
-  term: string;
-  definition: string;
-}
-
-export const generateGlossary = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<GlossaryTerm[]> => {
-  const model = "gemini-3.1-pro-preview";
-  const prompt = `Identify any technical agricultural terms, jargon, or complex concepts used in the following podcast script.
-  Create a glossary that defines these terms in simple, easy-to-understand language.
-  The glossary MUST be in ${language}.
-  
-  Return the output strictly as a JSON array of objects, where each object has a "term" and a "definition" property.
-  Do NOT wrap the JSON in markdown code blocks. Just return the raw JSON array.
-  If there are no technical terms, return an empty array [].
-  
-  Script:
-  ${script.map(s => `${s.speaker}: ${s.text}`).join("\n")}
-  `;
-
-  try {
-    const response = await getAi().models.generateContent({
-      model,
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-      }
-    });
-
-    const text = response.text || "[]";
-    try {
-      return JSON.parse(text);
-    } catch (parseError) {
-      console.error("Failed to parse glossary JSON", parseError);
-      return [];
-    }
-  } catch (e: any) {
-    console.error("Failed to generate glossary", e);
-    const errorMessage = e.message || "";
-    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
-      // Try Grok fallback first
-      try {
-        const xaiResponse = await fetch("/api/xai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, responseFormat: "json_object" })
-        });
-        if (xaiResponse.ok) {
-          const data = await xaiResponse.json();
-          if (data.text) {
-             try {
-               const parsed = JSON.parse(data.text);
-               if (Array.isArray(parsed)) return parsed;
-               if (parsed.glossary && Array.isArray(parsed.glossary)) return parsed.glossary;
-               if (parsed.terms && Array.isArray(parsed.terms)) return parsed.terms;
-             } catch (e) {
-               console.error("Failed to parse Grok glossary JSON", e);
-             }
-          }
-        }
-      } catch (xaiError) {
-        console.error("x.ai Fallback Error (Glossary):", xaiError);
-      }
-
-      console.log("Attempting OpenAI fallback for glossary...");
-      try {
-        const fallbackResponse = await fetch("/api/openai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, responseFormat: "json_object" })
-        });
-        if (fallbackResponse.ok) {
-          const data = await fallbackResponse.json();
-          // OpenAI might return it wrapped in an object if we used json_object
-          if (data.text) {
-             try {
-               const parsed = JSON.parse(data.text);
-               if (Array.isArray(parsed)) return parsed;
-               if (parsed.glossary && Array.isArray(parsed.glossary)) return parsed.glossary;
-               if (parsed.terms && Array.isArray(parsed.terms)) return parsed.terms;
-             } catch (e) {
-               return [];
-             }
-          }
-        }
-      } catch (fallbackError) {
-        console.error("OpenAI Fallback Error (Glossary):", fallbackError);
-      }
-    }
-    return [];
-  }
-};
-
-export const aiSearchPodcasts = async (query: string, podcasts: { id: string, title: string, description: string }[]): Promise<string[]> => {
-  if (podcasts.length === 0 || !query.trim()) return [];
-  
-  const model = "gemini-3.1-pro-preview";
-  const prompt = `You are an AI search assistant. A user is searching for podcasts with the query: "${query}".
-  
-  Here is the list of available podcasts:
-  ${JSON.stringify(podcasts, null, 2)}
-  
-  Analyze the user's natural language query and the podcast titles and descriptions. Find the podcasts that best match the query conceptually, not just by exact keyword.
-  Return a JSON array of strings containing ONLY the IDs of the matching podcasts. If none match, return an empty array [].`;
-
-  try {
-    const response = await getAi().models.generateContent({
-      model,
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-
-    const result = parseJson(response.text || "[]");
-    return Array.isArray(result) ? result : [];
-  } catch (e: any) {
-    console.error("AI Search Error:", e);
-    const errorMessage = e.message || "";
-    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
-      // Try Grok fallback first
-      try {
-        const xaiResponse = await fetch("/api/xai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, responseFormat: "json_object" })
-        });
-        if (xaiResponse.ok) {
-          const data = await xaiResponse.json();
-          const result = parseJson(data.text || "[]");
-          return Array.isArray(result) ? result : [];
-        }
-      } catch (xaiError) {
-        console.error("x.ai Fallback Error (AI Search):", xaiError);
-      }
-
-      try {
-        const fallbackResponse = await fetch("/api/openai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, responseFormat: "json_object" })
-        });
-        if (fallbackResponse.ok) {
-          const data = await fallbackResponse.json();
-          const result = parseJson(data.text || "[]");
-          return Array.isArray(result) ? result : [];
-        }
-      } catch (fallbackError) {
-        console.error("OpenAI Fallback Error (AI Search):", fallbackError);
-      }
-    }
-    // Fallback to basic text search if AI fails
-    return podcasts
-      .filter(p => p.title.toLowerCase().includes(query.toLowerCase()) || p.description.toLowerCase().includes(query.toLowerCase()))
-      .map(p => p.id);
-  }
-};
-
-export const generateMetadata = async (script: PodcastSegment[], language: PodcastLanguage = "English"): Promise<{ keywords: string[], topics: string[] }> => {
-  const model = "gemini-3.1-pro-preview";
-  const prompt = `Based on the following podcast script, generate a list of 5-8 relevant keywords and 2-4 main topics discussed.
-  
-  Script:
-  ${script.map(s => `${s.speaker}: ${s.text}`).join("\n")}
-  
-  Return a JSON object with "keywords" (array of strings) and "topics" (array of strings).`;
-
-  try {
-    const response = await getAi().models.generateContent({
-      model,
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-
-    const result = parseJson(response.text || "{}");
-    return {
-      keywords: Array.isArray(result.keywords) ? result.keywords : [],
-      topics: Array.isArray(result.topics) ? result.topics : []
-    };
-  } catch (e: any) {
-    console.error("Failed to generate metadata", e);
-    const errorMessage = e.message || "";
-    if (errorMessage.toLowerCase().includes("quota") || errorMessage.toLowerCase().includes("429") || errorMessage.toLowerCase().includes("key")) {
-      // Try Grok fallback first
-      try {
-        const xaiResponse = await fetch("/api/xai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, responseFormat: "json_object" })
-        });
-        if (xaiResponse.ok) {
-          const data = await xaiResponse.json();
-          const result = parseJson(data.text || "{}");
-          return {
-            keywords: Array.isArray(result.keywords) ? result.keywords : [],
-            topics: Array.isArray(result.topics) ? result.topics : []
-          };
-        }
-      } catch (xaiError) {
-        console.error("x.ai Fallback Error (Metadata):", xaiError);
-      }
-
-      // Fallback to OpenAI if Gemini and Grok fail
-      try {
-        const fallbackResponse = await fetch("/api/openai/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, responseFormat: "json_object" })
-        });
-        if (fallbackResponse.ok) {
-          const data = await fallbackResponse.json();
-          const result = parseJson(data.text || "{}");
-          return {
-            keywords: Array.isArray(result.keywords) ? result.keywords : [],
-            topics: Array.isArray(result.topics) ? result.topics : []
-          };
-        }
-      } catch (fallbackError) {
-        console.error("OpenAI Fallback Error (Metadata):", fallbackError);
-      }
-    }
-    return { keywords: [], topics: [] };
-  }
-};
-
-export const generatePodcastCover = async (title: string, topics: string[], inputImage?: string): Promise<string | null> => {
-  const model = "gemini-2.5-flash-image";
-  const prompt = `A professional, high-quality podcast cover art for a show titled "Harvest Unpacked". 
-  The episode title is "${title}". 
-  Topics discussed: ${topics.join(", ")}.
-  Style: Modern, agricultural, vibrant, cinematic photography or clean graphic design. 
-  ${inputImage ? "Use the provided image as a visual reference for the theme and color palette." : ""}
-  No text other than "Harvest Unpacked" if necessary, but focus on visual metaphors for agriculture and innovation.
-  High resolution, 1:1 aspect ratio.`;
-
-  try {
-    const contents: any = {
-      parts: [
-        { text: prompt }
-      ]
-    };
-
-    if (inputImage) {
-      contents.parts.push({
-        inlineData: {
-          data: inputImage,
-          mimeType: "image/jpeg" // Assuming jpeg for simplicity, could be dynamic
-        }
-      });
+    const fullBuffer = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of binaryChunks) {
+      fullBuffer.set(chunk, offset);
+      offset += chunk.length;
     }
 
-    const response = await getAi().models.generateContent({
-      model,
-      contents: [contents],
-      config: {
-        imageConfig: {
-          aspectRatio: "1:1",
-        },
-      },
-    });
-
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+    // Convert Uint8Array to base64
+    let binary = "";
+    for (let i = 0; i < fullBuffer.length; i++) {
+      binary += String.fromCharCode(fullBuffer[i]);
     }
-    return null;
+    return btoa(binary);
   } catch (e) {
-    console.error("Failed to generate podcast cover", e);
-    return null;
+    console.error("Failed to generate Gemini audio", e);
+    throw e;
   }
 };

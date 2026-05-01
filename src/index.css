@@ -1,12 +1,79 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=Inter:wght@100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Inter:wght@100..900&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --font-serif: "Cormorant Garamond", serif;
   --font-sans: "Inter", sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-tech-void: #0B0C10;
+  --color-tech-surface: #1F2833;
+  --color-tech-accent: #00FFFF;
+  --color-tech-purple: #B900FF;
+  --color-tech-grey: #66FCF1; /* Using a lighter version of cyan for subtle text */
+  --color-tech-dim: #45A29E;
 }
 
 body {
-  @apply font-serif;
+  @apply font-sans overflow-x-hidden bg-tech-void text-white antialiased;
 }
+
+.glow-cyan {
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.5), 0 0 20px rgba(0, 255, 255, 0.2);
+}
+
+.glow-purple {
+  text-shadow: 0 0 10px rgba(185, 0, 255, 0.5), 0 0 20px rgba(185, 0, 255, 0.2);
+}
+
+.glass-panel {
+  @apply bg-tech-surface/40 backdrop-blur-xl border border-tech-accent/10 shadow-[0_0_30px_rgba(0,255,255,0.05)];
+}
+
+.bento-inner {
+  @apply rounded-xl p-8 transition-all duration-300 ease-out border border-white/5 bg-white/5;
+}
+
+.tech-gradient {
+  @apply bg-gradient-to-br from-tech-accent via-tech-purple to-tech-void;
+}
+
+.audio-action-btn {
+  @apply px-4 py-2 hover:bg-tech-accent/10 rounded-full text-xs font-bold transition-all duration-300 flex items-center gap-2 text-tech-dim hover:text-tech-accent active:scale-95 border border-tech-accent/10;
+}
+
+.input-field {
+  @apply w-full bg-tech-surface/50 border border-tech-accent/20 rounded-xl px-6 py-4 text-sm focus:ring-2 focus:ring-tech-accent/50 transition-all duration-300 placeholder:text-tech-dim text-white;
+}
+
+.btn-primary {
+  @apply bg-tech-accent text-tech-void px-8 py-4 rounded-full font-display font-bold hover:brightness-110 transition-all duration-300 shadow-[0_0_20px_rgba(0,255,255,0.3)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 uppercase tracking-wider;
+}
+
+.tab-btn {
+  @apply px-6 py-2.5 rounded-full text-sm font-display font-bold transition-all duration-300 uppercase tracking-widest;
+}
+
+.tab-btn-active {
+  @apply bg-tech-surface text-tech-accent shadow-[0_0_15px_rgba(0,255,255,0.2)] border border-tech-accent/30;
+}
+
+.tab-btn-inactive {
+  @apply text-tech-dim hover:text-white;
+}
+
+@keyframes pulse-tech {
+  0%, 100% { opacity: 0.5; height: 40%; }
+  50% { opacity: 1; height: 100%; }
+}
+
+.waveform-bar {
+  @apply w-1 bg-tech-accent rounded-full;
+  animation: pulse-tech 1s ease-in-out infinite;
+}
+
+.waveform-bar:nth-child(2) { animation-delay: 0.1s; animation-duration: 0.8s; }
+.waveform-bar:nth-child(3) { animation-delay: 0.2s; animation-duration: 1.2s; }
+.waveform-bar:nth-child(4) { animation-delay: 0.3s; animation-duration: 0.9s; }
+.waveform-bar:nth-child(5) { animation-delay: 0.4s; animation-duration: 1.1s; }
