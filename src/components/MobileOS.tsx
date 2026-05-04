@@ -118,18 +118,18 @@ const MagazineCard = ({ magazine, onClick }: { magazine: Magazine; onClick: () =
 const HeroCard = ({ magazine, onClick }: { magazine: Magazine, onClick: () => void }) => (
   <div 
     onClick={onClick}
-    className="relative w-full h-[300px] rounded-3xl overflow-hidden group cursor-pointer"
+    className="relative w-full h-[240px] sm:h-[300px] rounded-3xl overflow-hidden group cursor-pointer shadow-2xl shadow-tech-void/50"
   >
     <img src={magazine.cover} alt={magazine.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
     <div className="absolute inset-0 bg-gradient-to-t from-tech-void via-tech-void/20 to-transparent" />
     <div className="absolute bottom-6 left-6 right-6">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
         {magazine.tags.map(tag => (
           <span key={tag} className="px-2 py-0.5 bg-white/10 backdrop-blur-md rounded text-[10px] font-bold text-white tracking-widest">{tag}</span>
         ))}
       </div>
-      <h2 className="text-3xl font-display font-black text-white leading-none mb-1">{magazine.title}</h2>
-      <p className="text-sm text-white/70">{magazine.issue}</p>
+      <h2 className="text-2xl sm:text-3xl font-display font-black text-white leading-none mb-1 truncate">{magazine.title}</h2>
+      <p className="text-xs sm:text-sm text-white/70">{magazine.issue}</p>
     </div>
   </div>
 );
@@ -420,27 +420,29 @@ const ReaderDetail = ({ magazine, onClose }: { magazine: Magazine; onClose: () =
           <button className="p-2 bg-white/5 rounded-full text-white/70 hover:text-white"><MoreVertical /></button>
         </div>
         
-        <div className="flex gap-6 pb-4">
-          <div className="w-32 h-44 rounded-xl overflow-hidden flex-shrink-0 shadow-2xl">
+        <div className="flex flex-col sm:flex-row gap-6 pb-4 items-center sm:items-stretch text-center sm:text-left">
+          <div className="w-40 h-56 sm:w-32 sm:h-44 rounded-xl overflow-hidden flex-shrink-0 shadow-2xl border border-white/10">
             <img src={magazine.cover} alt="" className="w-full h-full object-cover" />
           </div>
-          <div className="flex flex-col justify-center gap-3">
-             <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col justify-center gap-3 w-full">
+             <div className="flex flex-wrap justify-center sm:justify-start gap-2">
                 {magazine.tags.map(t => (
                   <span key={t} className="text-[10px] font-black tracking-widest text-tech-accent border border-tech-accent/30 px-2 py-0.5 rounded-sm uppercase">{t}</span>
                 ))}
               </div>
-            <h1 className="text-3xl font-display font-black leading-tight text-white">{magazine.title}</h1>
-            <div className="flex items-center gap-2">
+            <h1 className="text-3xl lg:text-4xl font-display font-black leading-tight text-white">{magazine.title}</h1>
+            <div className="flex items-center justify-center sm:justify-start gap-2">
               <span className="text-xs font-bold text-tech-accent uppercase tracking-widest">{magazine.category}</span>
               <span className="w-1 h-1 rounded-full bg-white/20" />
               <span className="text-xs font-bold text-tech-grey">{magazine.issue}</span>
             </div>
-            <div className="flex gap-2 mt-2">
-              <button className="flex-1 bg-tech-accent text-black font-black text-xs py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-lg shadow-tech-accent/20">
+            <div className="flex flex-col sm:flex-row gap-3 mt-4">
+              <button className="flex-1 bg-tech-accent text-black font-black text-xs py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-tech-accent/20 active:scale-95 transition-all">
                 <Play size={14} fill="currentColor" /> Play Latest
               </button>
-              <button className="p-2.5 border border-white/10 rounded-lg text-white/50 hover:text-tech-accent transition-colors"><Heart size={16} /></button>
+              <button className="p-3 border border-white/10 rounded-xl text-white/50 hover:text-tech-accent transition-colors flex items-center justify-center gap-2 text-xs font-bold">
+                 <Heart size={16} /> <span className="sm:hidden">Favorite</span>
+              </button>
             </div>
           </div>
         </div>

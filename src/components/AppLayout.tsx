@@ -27,13 +27,15 @@ export const AppLayout = ({
   return (
     <div className="min-h-screen bg-tech-void text-white overflow-hidden flex">
       {/* Desktop Sidebar */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {isDesktop && (
           <motion.aside
-            initial={{ x: -300 }}
-            animate={{ x: 0 }}
-            exit={{ x: -300 }}
-            className="w-72 border-r border-white/5 bg-tech-void flex-shrink-0 z-50 overflow-y-auto no-scrollbar"
+            key="desktop-sidebar"
+            initial={{ x: -300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -300, opacity: 0 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 100 }}
+            className="w-72 border-r border-white/5 bg-tech-void flex-shrink-0 z-50 overflow-y-auto no-scrollbar hidden lg:flex flex-col"
           >
             {sidebar}
           </motion.aside>
@@ -42,8 +44,8 @@ export const AppLayout = ({
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col relative h-screen overflow-hidden">
-        <div className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-0">
-          <div className="max-w-5xl mx-auto w-full">
+        <div className="flex-1 overflow-y-auto no-scrollbar pb-32 lg:pb-8">
+          <div className="max-w-7xl mx-auto w-full px-4 lg:px-8">
             {children}
           </div>
         </div>

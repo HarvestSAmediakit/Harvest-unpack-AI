@@ -288,15 +288,15 @@ export const PublisherStudio = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)]">
+    <div className="flex flex-col min-h-screen lg:h-[calc(100vh-140px)]">
       {/* Action Bar */}
-      <div className="bg-tech-surface border border-white/5 rounded-t-xl p-4 flex justify-between items-center bg-gradient-to-r from-tech-surface to-[#222]">
-        <div className="flex items-center gap-4">
-          <div className="bg-tech-accent/10 border border-tech-accent/30 px-3 py-1.5 rounded-lg flex items-center gap-2">
+      <div className="bg-tech-surface border border-white/5 rounded-t-xl p-4 flex flex-col md:flex-row justify-between items-center gap-4 bg-gradient-to-r from-tech-surface to-[#222]">
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+          <div className="bg-tech-accent/10 border border-tech-accent/30 px-3 py-1.5 rounded-lg flex items-center gap-2 w-full sm:w-auto">
             <Settings size={14} className="text-tech-accent" />
-            <span className="text-xs font-bold text-tech-accent uppercase tracking-widest">Studio Workspace: Harvest SA</span>
+            <span className="text-xs font-bold text-tech-accent uppercase tracking-widest truncate">Studio Workspace: Harvest SA</span>
           </div>
-          <div className="flex items-center bg-[#111] p-1 rounded-lg border border-white/5">
+          <div className="flex items-center bg-[#111] p-1 rounded-lg border border-white/5 w-full sm:w-auto overflow-x-auto no-scrollbar">
             <button 
               onClick={() => setStudioMode('manual')}
               className={cn(
@@ -344,10 +344,10 @@ export const PublisherStudio = () => {
       </div>
 
       {/* Main Studio Split Area */}
-      <div className="flex flex-1 overflow-hidden border-x border-b border-white/5 rounded-b-xl">
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden border-x border-b border-white/5 rounded-b-xl max-h-[1200px]">
         
         {/* LEFT: PDF PREVIEW */}
-        <div className="flex-1 bg-[#111] overflow-hidden flex flex-col border-r border-white/5">
+        <div className="flex-[1.5] min-h-[400px] lg:min-h-0 bg-[#111] overflow-hidden flex flex-col border-b lg:border-b-0 lg:border-r border-white/5">
           <div className="p-3 bg-black/40 flex justify-between items-center border-b border-white/5">
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-tech-grey flex items-center gap-2">
               <ImageIcon size={12} className="text-tech-accent" />
@@ -389,7 +389,7 @@ export const PublisherStudio = () => {
         </div>
 
         {/* RIGHT: WORKSPACE */}
-        <div className="w-[520px] bg-tech-surface flex flex-col">
+        <div className="w-full lg:w-[480px] xl:w-[520px] bg-tech-surface flex flex-col border-t lg:border-t-0 border-white/5">
           {studioMode === 'autopilot' ? (
             /* AUTO-PILOT DASHBOARD */
             <div className="flex flex-col h-full bg-[#1A1A1A]">
