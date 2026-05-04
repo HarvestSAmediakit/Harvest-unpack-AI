@@ -1,0 +1,13 @@
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+redis:
+  address: redis:6379
+keys:
+  your-api-key: your-api-secret
+agent:
+  enabled: true
+  worker_service:
+    enabled: true
+    address: ":8080"

@@ -1,3 +1,11 @@
+declare global {
+  namespace Express {
+    interface Request {
+      publisher: any;
+    }
+  }
+}
+
 export interface AppError {
   message: string;
   reason?: string;

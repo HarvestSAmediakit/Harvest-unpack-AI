@@ -44,6 +44,7 @@ export interface LibraryEntry {
   description: string;
   audioUrl: string;
   pdfUrl?: string;
+  imageUrl?: string;
   script: PodcastSegment[];
   chapters: any[];
   showNotes: string;
@@ -59,6 +60,7 @@ export const savePodcastToFirebase = async (
   description: string,
   audioBlob: Blob,
   pdfBlob: Blob | null,
+  imageBlob: Blob | null,
   script: PodcastSegment[],
   chapters: any[],
   showNotes: string,
@@ -85,6 +87,14 @@ export const savePodcastToFirebase = async (
     pdfUrl = await getDownloadURL(pdfRef);
   }
 
+  // Upload Image (if exists)
+  let imageUrl = undefined;
+  if (imageBlob) {
+    const imageRef = ref(storage, `podcasts/${ownerId}/${timestamp}_image`);
+    await uploadBytes(imageRef, imageBlob);
+    imageUrl = await getDownloadURL(imageRef);
+  }
+
   const dateStr = new Date().toISOString();
 
   const newEntryData = {
@@ -92,6 +102,7 @@ export const savePodcastToFirebase = async (
     description,
     audioUrl,
     pdfUrl: pdfUrl || null,
+    imageUrl: imageUrl || null,
     script: JSON.stringify(script),
     chapters: JSON.stringify(chapters),
     showNotes,
@@ -108,7 +119,8 @@ export const savePodcastToFirebase = async (
     id: docRef.id,
     script,
     chapters,
-    pdfUrl
+    pdfUrl,
+    imageUrl
   };
 };
 
@@ -135,6 +147,7 @@ export const getPodcastsFromFirebase = async (): Promise<LibraryEntry[]> => {
       description: data.description,
       audioUrl: data.audioUrl,
       pdfUrl: data.pdfUrl,
+      imageUrl: data.imageUrl,
       script: typeof data.script === 'string' ? JSON.parse(data.script) : data.script,
       chapters: typeof data.chapters === 'string' ? JSON.parse(data.chapters) : data.chapters,
       showNotes: data.showNotes,
@@ -166,6 +179,7 @@ export const getPublicPodcastsFromFirebase = async (): Promise<LibraryEntry[]> =
       description: data.description,
       audioUrl: data.audioUrl,
       pdfUrl: data.pdfUrl,
+      imageUrl: data.imageUrl,
       script: typeof data.script === 'string' ? JSON.parse(data.script) : data.script,
       chapters: typeof data.chapters === 'string' ? JSON.parse(data.chapters) : data.chapters,
       showNotes: data.showNotes,
@@ -180,7 +194,7 @@ export const getPublicPodcastsFromFirebase = async (): Promise<LibraryEntry[]> =
   return podcasts;
 };
 
-export const deletePodcastFromFirebase = async (id: string, audioUrl: string, pdfUrl?: string) => {
+export const deletePodcastFromFirebase = async (id: string, audioUrl: string, pdfUrl?: string, imageUrl?: string) => {
   if (!auth.currentUser) return;
 
   // Delete document
@@ -195,6 +209,10 @@ export const deletePodcastFromFirebase = async (id: string, audioUrl: string, pd
     if (pdfUrl) {
       const pdfRef = ref(storage, pdfUrl);
       await deleteObject(pdfRef);
+    }
+    if (imageUrl) {
+      const imageRef = ref(storage, imageUrl);
+      await deleteObject(imageRef);
     }
   } catch (error) {
     console.error("Error deleting files from storage:", error);

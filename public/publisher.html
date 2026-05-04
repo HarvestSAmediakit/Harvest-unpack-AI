@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Publisher Dashboard - DigiMagAI Podcast</title>
+  <style>
+    body { font-family: system-ui; max-width: 800px; margin: 0 auto; padding: 2rem; }
+    input, button { padding: 0.5rem; margin: 0.5rem 0; width: 100%; }
+    .success { background: #d4edda; padding: 1rem; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>DigiMagAI Podcast Publisher Dashboard</h1>
+  <p>Welcome, Cape Media</p>
+  
+  <h2>Upload New Issue</h2>
+  <form id="uploadForm">
+    <input type="url" id="magazineUrl" placeholder="Magazine URL" required>
+    <input type="text" id="issueNumber" placeholder="Issue Number (e.g., 326)" required>
+    <button type="submit">Process Issue → Generate Report & Podcasts</button>
+  </form>
+  
+  <div id="result"></div>
+  
+  <script>
+    document.getElementById('uploadForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const url = document.getElementById('magazineUrl').value;
+      const issueNumber = document.getElementById('issueNumber').value;
+      
+      const response = await fetch('/api/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, issueNumber })
+      });
+      
+      const data = await response.json();
+      document.getElementById('result').innerHTML = `
+        <div class="success">
+          <h3>✅ Processing Started</h3>
+          <p>Your issue will be ready in 2-3 minutes.</p>
+          <p>Reader URL: <a href="/issue/${data.issueId}">/issue/${data.issueId}</a></p>
+          <p>Embed Code: <code>&lt;iframe src="https://digimag.ai/issue/${data.issueId}"&gt;&lt;/iframe&gt;</code></p>
+        </div>
+      `;
+    };
+  </script>
+</body>
+</html>

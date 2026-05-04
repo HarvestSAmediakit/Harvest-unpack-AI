@@ -1,0 +1,36 @@
+src/components/PodcastGenerator.tsx:52:        value={publisher}
+src/components/PodcastGenerator.tsx:59:        value={title}
+src/components/PodcastGenerator.tsx:65:        value={articleText}
+src/components/Onboarding.tsx:83:            <input type="email" value={email || ""} placeholder="Email" className="w-full p-2 bg-slate-900 text-white rounded" onChange={e => setEmail(e.target.value)} />
+src/components/Onboarding.tsx:84:            <input type="password" value={password || ""} placeholder="Password" className="w-full p-2 bg-slate-900 text-white rounded" onChange={e => setPassword(e.target.value)} />
+src/components/Onboarding.tsx:91:            <input value={profile.name || ""} placeholder="Magazine Name" className="w-full p-2 bg-slate-900 text-white rounded" onChange={e => setProfile({...profile, name: e.target.value})} />
+src/components/Onboarding.tsx:92:            <textarea value={profile.bio || ""} placeholder="Bio" className="w-full p-2 bg-slate-900 text-white rounded" onChange={e => setProfile({...profile, bio: e.target.value})} />
+src/App.tsx:1909:                          value={scriptModel || "auto"}
+src/App.tsx:1918:                              <option key={m.id} value={m.id}>{m.name}</option>
+src/App.tsx:1940:                          value={grokApiKey || ""}
+src/App.tsx:1951:                          value={audioModel || "gemini"}
+src/App.tsx:1990:                          value={geminiApiKey || ""}
+src/App.tsx:2002:                          value={googleCloudApiKey || ""}
+src/App.tsx:2022:                          value={openaiApiKey || ""}
+src/App.tsx:2133:                    value={articleTitleInput || ""}
+src/App.tsx:2200:                      value={topic || ""}
+src/App.tsx:2311:                      value={articleUrl || ""}
+src/App.tsx:2323:                      value={pastedText || ""}
+src/App.tsx:2355:                        value={language || "en"}
+src/App.tsx:2360:                          <option key={key} value={key}>
+src/App.tsx:2371:                        value={podcastFormat || "standard"}
+src/App.tsx:2421:                          value={host1Id || HOSTS[0].id}
+src/App.tsx:2425:                          {HOSTS.filter(h => h.id !== host2Id).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+src/App.tsx:2428:                          value={voice1 || HOSTS[0].defaultVoice}
+src/App.tsx:2432:                          {VOICES.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+src/App.tsx:2455:                          value={host2Id || HOSTS[1].id}
+src/App.tsx:2459:                          {HOSTS.filter(h => h.id !== host1Id).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+src/App.tsx:2462:                          value={voice2 || HOSTS[1].defaultVoice}
+src/App.tsx:2466:                          {VOICES.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+src/App.tsx:2777:                             value={podcastSummary || ""}
+src/App.tsx:3097:                         value={showNotes || ""}
+src/App.tsx:3505:                  value={chatInput || ""}
+src/App.tsx:3603:                    value={chatInput || ""}
+src/App.tsx:3644:                        value={refineInput || ""}
+src/App.tsx:3813:                    value={currentTime || 0}
+src/App.tsx:3870:                  value={isMuted ? 0 : (volume || 0)}

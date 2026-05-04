@@ -7,60 +7,56 @@
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   
-  --color-tech-void: #0B0C10;
-  --color-tech-surface: #1F2833;
-  --color-tech-accent: #00FFFF;
-  --color-tech-purple: #B900FF;
-  --color-tech-grey: #66FCF1; /* Using a lighter version of cyan for subtle text */
-  --color-tech-dim: #45A29E;
+  --color-charcoal-base: #121212;
+  --color-charcoal-void: #1A1A1A; /* Charcoal Black */
+  --color-charcoal-surface: #242424;
+  --color-electric-cyan: #00E5FF; /* Electric Cyan */
+  --color-tech-grey: #94A3B8;
+  --color-tech-dim: #475569;
 }
 
 body {
-  @apply font-sans overflow-x-hidden bg-tech-void text-white antialiased;
+  @apply font-sans overflow-x-hidden bg-charcoal-void text-slate-100 antialiased;
 }
 
-.glow-cyan {
-  text-shadow: 0 0 10px rgba(0, 255, 255, 0.5), 0 0 20px rgba(0, 255, 255, 0.2);
-}
-
-.glow-purple {
-  text-shadow: 0 0 10px rgba(185, 0, 255, 0.5), 0 0 20px rgba(185, 0, 255, 0.2);
+.glow-accent {
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.4), 0 0 20px rgba(0, 229, 255, 0.2);
 }
 
 .glass-panel {
-  @apply bg-tech-surface/40 backdrop-blur-xl border border-tech-accent/10 shadow-[0_0_30px_rgba(0,255,255,0.05)];
+  @apply bg-charcoal-surface/80 backdrop-blur-xl border border-[#333] shadow-xl rounded-2xl;
 }
 
 .bento-inner {
-  @apply rounded-xl p-8 transition-all duration-300 ease-out border border-white/5 bg-white/5;
+  @apply rounded-xl p-8 transition-all duration-300 ease-out border border-white/5 bg-electric-cyan/5 hover:bg-electric-cyan/10;
 }
 
 .tech-gradient {
-  @apply bg-gradient-to-br from-tech-accent via-tech-purple to-tech-void;
+  @apply bg-gradient-to-br from-electric-cyan via-charcoal-void to-charcoal-base;
 }
 
 .audio-action-btn {
-  @apply px-4 py-2 hover:bg-tech-accent/10 rounded-full text-xs font-bold transition-all duration-300 flex items-center gap-2 text-tech-dim hover:text-tech-accent active:scale-95 border border-tech-accent/10;
+  @apply px-4 py-2 hover:bg-electric-cyan/10 rounded-full text-xs font-bold transition-all duration-300 flex items-center gap-2 text-tech-grey hover:text-electric-cyan active:scale-95 border border-white/5;
 }
 
 .input-field {
-  @apply w-full bg-tech-surface/50 border border-tech-accent/20 rounded-xl px-6 py-4 text-sm focus:ring-2 focus:ring-tech-accent/50 transition-all duration-300 placeholder:text-tech-dim text-white;
+  @apply w-full bg-charcoal-base border border-[#333] rounded-xl px-6 py-4 text-sm focus:border-electric-cyan transition-all duration-300 placeholder:text-tech-dim text-white outline-none;
 }
 
 .btn-primary {
-  @apply bg-tech-accent text-tech-void px-8 py-4 rounded-full font-display font-bold hover:brightness-110 transition-all duration-300 shadow-[0_0_20px_rgba(0,255,255,0.3)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 uppercase tracking-wider;
+  @apply bg-electric-cyan text-black px-8 py-4 rounded-full font-sans font-black hover:scale-105 transition-all duration-300 shadow-[0_0_15px_rgba(0,229,255,0.4)] hover:shadow-[0_0_25px_rgba(0,229,255,0.6)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 tracking-wide;
 }
 
 .tab-btn {
-  @apply px-6 py-2.5 rounded-full text-sm font-display font-bold transition-all duration-300 uppercase tracking-widest;
+  @apply px-6 py-2.5 rounded-full text-sm font-sans font-medium transition-all duration-300 tracking-wide;
 }
 
 .tab-btn-active {
-  @apply bg-tech-surface text-tech-accent shadow-[0_0_15px_rgba(0,255,255,0.2)] border border-tech-accent/30;
+  @apply bg-electric-cyan text-black shadow-lg;
 }
 
 .tab-btn-inactive {
-  @apply text-tech-dim hover:text-white;
+  @apply text-tech-grey hover:text-white;
 }
 
 @keyframes pulse-tech {
@@ -68,8 +64,14 @@ body {
   50% { opacity: 1; height: 100%; }
 }
 
+@keyframes shimmer {
+  0% { transform: translateX(-200%); opacity: 0; }
+  50% { opacity: 0.5; }
+  100% { transform: translateX(200%); opacity: 0; }
+}
+
 .waveform-bar {
-  @apply w-1 bg-tech-accent rounded-full;
+  @apply w-1 bg-electric-cyan rounded-full;
   animation: pulse-tech 1s ease-in-out infinite;
 }
 

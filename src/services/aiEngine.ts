@@ -24,7 +24,7 @@ export async function generateAIResponse(prompt: string, systemInstruction: stri
 async function callGemini(prompt: string, systemInstruction: string): Promise<PodcastSegment[]> {
   try {
     const response = await withRetry(() => ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
         systemInstruction,

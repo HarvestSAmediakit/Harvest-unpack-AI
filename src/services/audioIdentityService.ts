@@ -19,8 +19,8 @@ export const generateIntroMusic = async (apiKey?: string): Promise<string | null
   try {
     const currentAi = getAi(apiKey);
     const response = await withRetry(() => currentAi.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: `Create a premium podcast intro track for a South African professional insights show called "DigiMag Podcasts".
+      model: "lyria-3-clip-preview",
+      contents: `Create a premium podcast intro track for a South African professional insights show called "DigiMagAI Podcast".
 ...
 Audio Style:
 Ambient, modern, with subtle African rhythm elements and high-end professional polish.
@@ -67,9 +67,9 @@ Rules:
 
 export const generateIntroVoiceover = async (script?: string, apiKey?: string, host1?: Host): Promise<string | null> => {
   const currentAi = getAi(apiKey);
-  const text = script || `Welcome to DigiMag Podcasts… your source for professional South African insights… with ${host1?.name || 'the team'}.`;
+  const text = script || `Welcome to DigiMagAI Podcast… your source for professional South African insights… with ${host1?.name || 'the team'}.`;
   const response = await withRetry(() => currentAi.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-3.1-flash-tts-preview",
     contents: [{ parts: [{ text }] }],
     config: {
       responseModalities: [Modality.AUDIO],
@@ -88,7 +88,7 @@ export const generateSting = async (apiKey?: string): Promise<string | null> => 
   try {
     const currentAi = getAi(apiKey);
     const response = await withRetry(() => currentAi.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "lyria-3-clip-preview",
       contents: `Create a short 5-second audio singer for a South African professional podcast.
 ...
 Include:
@@ -130,8 +130,8 @@ export const generateOutroMusic = async (apiKey?: string): Promise<string | null
   try {
     const currentAi = getAi(apiKey);
     const response = await withRetry(() => currentAi.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: `Create a 15-second outro track matching the "DigiMag Podcasts" intro theme.
+      model: "lyria-3-clip-preview",
+      contents: `Create a 15-second outro track matching the "DigiMagAI Podcast" intro theme.
 ...
 Style:
 Same instruments and mood, but more relaxed and resolved.
@@ -171,11 +171,11 @@ export const generateOutroVoiceover = async (apiKey?: string, host1?: Host, host
   const h2Voice = host2?.defaultVoice || 'Puck';
 
   const prompt = `TTS the following conversation between ${h1Name} and ${h2Name}:
-      ${h1Name}: That’s it for this edition of DigiMag Podcasts… tap ‘Join the Conversation’ and ask us anything about this issue.
+      ${h1Name}: That’s it for this edition of DigiMagAI Podcast… tap ‘Join the Conversation’ and ask us anything about this issue.
       ${h2Name}: We’re here to provide the insights you need.`;
 
   const response = await withRetry(() => currentAi.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-3.1-flash-tts-preview",
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseModalities: [Modality.AUDIO],

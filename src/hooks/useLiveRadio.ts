@@ -114,7 +114,7 @@ export const useLiveRadio = () => {
       });
       
       const systemInstruction = `
-You are simulating a live, world-class professional radio broadcast called "DigiMag Live". You will play the roles of BOTH hosts simultaneously: Belinda (seasoned professional broadcaster) and Peter (business-savvy analyst). You must seamlessly switch between these two personas in your responses, indicating who is speaking.
+You are simulating a live, world-class professional radio broadcast called "DigiMagAI Podcast Live". You will play the roles of BOTH hosts simultaneously: Belinda (seasoned professional broadcaster) and Peter (business-savvy analyst). You must seamlessly switch between these two personas in your responses, indicating who is speaking.
 
 AGENT PERSONA 1: Belinda
 You are a sophisticated and highly articulate South African female presenter with over two decades in professional broadcasting. Your voice reflects an air of seasoned authority and intellectual depth. You are polished, professional, and insightful.
@@ -140,7 +140,7 @@ When you speak, format your text output as "Belinda: [text]" or "Peter: [text]" 
       `;
 
       const sessionPromise = ai.live.connect({
-        model: "models/gemini-2.0-flash-exp",
+        model: "gemini-3.1-flash-live-preview",
         config: {
           systemInstruction,
           responseModalities: [Modality.AUDIO],
@@ -184,19 +184,20 @@ When you speak, format your text output as "Belinda: [text]" or "Peter: [text]" 
             
             // Send initial context
             sessionPromise.then(session => {
-              session.sendRealtimeInput({ text: "Here is the DigiMag magazine content to discuss today: " + contextText });
+              session.sendRealtimeInput({ text: "Here is the DigiMagAI Podcast magazine content to discuss today: " + contextText });
               startRecording(session);
             });
           },
           onmessage: async (message: LiveServerMessage) => {
             // Handle audio output
-            const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            const parts = message.serverContent?.modelTurn?.parts;
+            const base64Audio = parts?.[0]?.inlineData?.data;
             if (base64Audio) {
               playPcmChunk(base64Audio);
             }
             
             // Handle text transcript
-            const textPart = message.serverContent?.modelTurn?.parts.find(p => p.text);
+            const textPart = parts?.find(p => p.text);
             if (textPart?.text) {
               setTranscript(prev => [...prev, { role: 'model', text: textPart.text! }]);
             }

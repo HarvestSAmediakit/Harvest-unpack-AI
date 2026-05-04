@@ -1,9 +1,9 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { PodcastError } from '../types';
 
-// Initialize PDF.js worker using unpkg for better reliability with newer versions
-// Note: Newer versions of pdfjs-dist use .mjs for the worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+// Initialize PDF.js worker using local Vite asset URL
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 export const extractTextFromPdf = async (file: File): Promise<string> => {
   try {

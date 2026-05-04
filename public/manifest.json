@@ -1,6 +1,6 @@
 {
-  "name": "DigiMag Podcasts AI",
-  "short_name": "DigiMag",
+  "name": "DigiMagAI Podcast",
+  "short_name": "DigiMagAI",
   "description": "Broadcasting Professional Insights through AI Podcasts",
   "start_url": "/",
   "display": "standalone",

@@ -1,0 +1,54 @@
+./backend-node/package.json:6:    "dev": "tsx watch src/index.ts",
+./backend-node/package.json:9:    "prisma:migrate": "prisma migrate dev",
+./backend-node/package.json:32:  "devDependencies": {
+./src/App.tsx:171:Unlike turnkey managed solutions such as Vapi or Retell AI—which optimize for simple telephony use cases (SIP/VoIP), rely on WebSockets, and abstract away low-level room controls—LiveKit is an un-opinionated, open-source framework. It treats virtual rooms, participants, and audio tracks as first-class primitives. This allows developers to instantiate a virtual "studio" where multiple AI agents operate as distinct participants, each publishing their own synchronized audio streams. LiveKit's SFU architecture inherently supports high-volume streaming to thousands of passive listeners while retaining the ability to dynamically alter participant permissions through Simulcast and Dynacast optimizations.
+./src/App.tsx:202:To eliminate this latency and fulfill the requirement of speaking back to the listeners in a natural way without delay, the architecture implements the "Chat-Supervisor" pattern, a specialized multi-agent coordination strategy developed within the OpenAI Agents SDK. This pattern divorces the immediate acoustic response from the heavy cognitive reasoning task. The architecture utilizes two distinct models working in tandem:
+./src/App.tsx:222:To override these deep-seated probabilistic behaviors and fulfill the requirement that listeners do not even suspect they are hearing AI, the architecture requires a foundational prompt framework—often colloquially referred to in development circles as the "super god code." This is an immutable, tightly structured system prompt that acts as the absolute operational constitution for the AI personas.
+./src/constants.ts:57:    description: 'The Voice of Reason. A distinguished analytical moderator specializing in socio-economic transformation and sustainable development. Her delivery is steady, respectful, and profoundly knowledgeable, providing a world-class perspective on local development.',
+./publisher-dashboard/package.json:6:    "dev": "next dev",
+./publisher-dashboard/package.json:21:  "devDependencies": {
+./server.ts:574:    // Upload PDF to cloud or store data URL (for simple dev we'll base64 it and pretend it's a URL)
+./package-lock.json:57:      "devDependencies": {
+./package-lock.json:3173:      "dev": true,
+./package-lock.json:3183:      "dev": true,
+./package-lock.json:3200:      "dev": true,
+./package-lock.json:3241:      "dev": true,
+./package-lock.json:3254:      "dev": true,
+./package-lock.json:3285:      "dev": true,
+./package-lock.json:3336:      "dev": true,
+./package-lock.json:3355:      "dev": true,
+./package-lock.json:3380:      "dev": true,
+./package-lock.json:3394:      "dev": true,
+./package-lock.json:3410:      "dev": true,
+./package-lock.json:3438:      "dev": true,
+./package-lock.json:3448:      "dev": true,
+./package-lock.json:3460:      "dev": true,
+./package-lock.json:3655:      "dev": true,
+./package-lock.json:4250:        "devtools-protocol": "*"
+./package-lock.json:4667:    "node_modules/devlop": {
+./package-lock.json:4669:      "resolved": "https://registry.npmjs.org/devlop/-/devlop-1.1.0.tgz",
+./package-lock.json:4680:    "node_modules/devtools-protocol": {
+./package-lock.json:4682:      "resolved": "https://registry.npmjs.org/devtools-protocol/-/devtools-protocol-0.0.1595872.tgz",
+./package-lock.json:5527:      "dev": true,
+./package-lock.json:6093:        "devlop": "^1.0.0",
+./package-lock.json:6142:          "url": "https://github.com/sponsors/mdevils"
+./package-lock.json:6146:          "url": "https://patreon.com/mdevils"
+./package-lock.json:7340:        "devlop": "^1.0.0",
+./package-lock.json:7364:        "devlop": "^1.0.0",
+./package-lock.json:7384:        "devlop": "^1.1.0",
+./package-lock.json:7406:        "devlop": "^1.0.0",
+./package-lock.json:7438:        "devlop": "^1.0.0",
+./package-lock.json:7536:        "devlop": "^1.0.0",
+./package-lock.json:7569:        "devlop": "^1.0.0",
+./package-lock.json:7623:        "devlop": "^1.0.0",
+./package-lock.json:7921:        "devlop": "^1.0.0",
+./package-lock.json:8297:      "integrity": "sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ==",
+./package-lock.json:8846:      "dev": true,
+./package-lock.json:9000:        "devtools-protocol": "0.0.1595872",
+./package-lock.json:9020:        "devtools-protocol": "0.0.1595872",
+./package-lock.json:9119:        "devlop": "^1.0.0",
+./package-lock.json:10268:      "devOptional": true,
+./package-lock.json:10307:        "devlop": "^1.0.0",
+./index.html:5:    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+./package.json:7:    "dev": "tsx server.ts",
+./package.json:61:  "devDependencies": {

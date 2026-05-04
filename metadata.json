@@ -1,6 +1,6 @@
 {
-  "name": "DigiMag Podcasts AI",
-  "description": "An app where you upload PDF articles to create engaging, energetic, and funny podcast DeepDive discussions between three South African agricultural professionals from Harvest SA magazine.",
+  "name": "DigiMagAI Podcast",
+  "description": "Convert magazine articles into engaging AI-powered podcast conversations with a unique South African flair.",
   "requestFramePermissions": ["autoplay", "microphone"]
 }
 
